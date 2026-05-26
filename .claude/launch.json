@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vim-golf",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-l", "8090", "/Users/thomas/Desktop/Projects/vim-golf"],
+      "port": 8090
+    }
+  ]
+}
