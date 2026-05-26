@@ -1,0 +1,3519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vim Golf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #1a1a2e;
+  --bg-alt: #16213e;
+  --surface: #1f1f38;
+  --text: #e0def4;
+  --muted: #908caa;
+  --faint: #6e6a86;
+  --accent: #c4a7e7;
+  --correct: #9ccfd8;
+  --warn: #f6c177;
+  --incorrect: #eb6f92;
+  --cursor-bg: #e0def4;
+  --cursor-fg: #1a1a2e;
+  --line-num: #3e3a56;
+  --highlight: rgba(196, 167, 231, 0.12);
+  --visual: rgba(196, 167, 231, 0.22);
+  --font-serif: 'Crimson Pro', Georgia, serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 40px 24px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen { display: none; flex-direction: column; }
+.screen.active { display: flex; }
+
+/* ── Start Screen ──────────────────────────── */
+
+#screen-start {
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+  gap: 48px;
+}
+
+.logo {
+  text-align: center;
+}
+
+.logo h1 {
+  font-family: var(--font-serif);
+  font-weight: 300;
+  font-size: 3.2rem;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.logo p {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  color: var(--muted);
+  font-style: italic;
+  font-weight: 300;
+}
+
+.mode-selector {
+  display: flex;
+  gap: 64px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.mode-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.mode-group h2 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 0.95rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.mode-btn {
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--faint);
+  cursor: pointer;
+  padding: 6px 20px;
+  transition: color 0.15s;
+  letter-spacing: 0.02em;
+}
+
+.mode-btn:hover {
+  color: var(--text);
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  color: var(--faint);
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s;
+  font-style: italic;
+}
+
+.link-btn:hover { color: var(--muted); }
+
+.streak-display {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--faint);
+  text-align: center;
+}
+
+/* ── Game Screen ───────────────────────────── */
+
+#screen-game {
+  gap: 24px;
+  flex: 1;
+}
+
+#game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+#game-timer, #game-counter {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--faint);
+}
+
+#problem-desc {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  color: var(--text);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.editor-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.editor-section-label {
+  font-family: var(--font-serif);
+  font-size: 0.78rem;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 400;
+}
+
+.editor {
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  line-height: 1.7;
+  white-space: pre;
+  overflow-x: auto;
+  padding: 16px 0;
+}
+
+.editor-line {
+  display: block;
+  padding: 0 16px 0 0;
+}
+
+.line-num {
+  display: inline-block;
+  width: 3ch;
+  text-align: right;
+  color: var(--line-num);
+  margin-right: 1.5ch;
+  user-select: none;
+  font-size: 0.82rem;
+}
+
+.char-cursor {
+  background: var(--cursor-bg);
+  color: var(--cursor-fg);
+}
+
+.char-visual {
+  background: var(--visual);
+}
+
+.syn-kw { color: #c4a7e7; }
+.syn-str { color: #f6c177; }
+.syn-comment { color: var(--faint); font-style: italic; }
+.syn-num { color: #9ccfd8; }
+.syn-fn { color: #ea9a97; }
+.syn-type { color: #9ccfd8; }
+
+.target-editor {
+  opacity: 0.55;
+}
+
+.target-line-diff {
+  border-left: 2px solid var(--accent);
+  padding-left: 6px;
+  opacity: 1;
+}
+
+.target-line-added {
+  border-left: 2px solid var(--correct);
+  padding-left: 6px;
+  opacity: 1;
+}
+
+.target-line-removed {
+  border-left: 2px solid var(--incorrect);
+  padding-left: 6px;
+  opacity: 1;
+  text-decoration: line-through;
+}
+
+.solved-flash {
+  animation: solvedFlash 0.4s ease-out;
+}
+
+@keyframes solvedFlash {
+  0% { box-shadow: inset 0 0 0 2px var(--correct); }
+  100% { box-shadow: inset 0 0 0 0 transparent; }
+}
+
+/* ── Status Bar ────────────────────────────── */
+
+#status-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 8px;
+}
+
+#mode-indicator {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 10px;
+  color: var(--bg);
+  background: var(--accent);
+  text-transform: uppercase;
+}
+
+#mode-indicator.insert { background: var(--correct); }
+#mode-indicator.visual { background: var(--warn); }
+#mode-indicator.command { background: var(--muted); }
+
+#keystroke-bar {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex: 1;
+  align-items: center;
+  min-height: 26px;
+}
+
+.key-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 1px 6px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+
+#command-line {
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  color: var(--text);
+  padding: 4px 0;
+}
+
+#command-line .cmd-prefix {
+  color: var(--accent);
+}
+
+/* ── Feedback Screen ───────────────────────── */
+
+#screen-feedback {
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+  gap: 32px;
+}
+
+.feedback-badge {
+  font-family: var(--font-serif);
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.badge-optimal { color: var(--correct); }
+.badge-close { color: var(--warn); }
+.badge-inefficient { color: var(--incorrect); }
+
+.feedback-stats {
+  display: flex;
+  gap: 40px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.feedback-stat-val {
+  font-size: 1.4rem;
+  color: var(--text);
+  font-weight: 500;
+  display: block;
+}
+
+.feedback-comparison {
+  display: flex;
+  gap: 48px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.feedback-col {
+  flex: 1;
+}
+
+.feedback-col-title {
+  font-family: var(--font-serif);
+  font-size: 0.8rem;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+.feedback-keys {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.feedback-next {
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  color: var(--faint);
+  font-style: italic;
+  cursor: pointer;
+}
+
+/* ── Results Screen ────────────────────────── */
+
+#screen-results {
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+  gap: 32px;
+}
+
+.results-title {
+  font-family: var(--font-serif);
+  font-weight: 300;
+  font-size: 2rem;
+  color: var(--text);
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  text-align: center;
+  width: 100%;
+  max-width: 500px;
+}
+
+.results-stat-label {
+  font-family: var(--font-serif);
+  font-size: 0.78rem;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.results-stat-val {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.results-categories {
+  width: 100%;
+  max-width: 500px;
+}
+
+.results-cat-title {
+  font-family: var(--font-serif);
+  font-size: 0.82rem;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 12px;
+}
+
+.results-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.results-cat-name {
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+  color: var(--muted);
+  width: 100px;
+  text-align: right;
+}
+
+.results-cat-bar-bg {
+  flex: 1;
+  height: 6px;
+  background: var(--surface);
+  position: relative;
+}
+
+.results-cat-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s;
+}
+
+.results-cat-pct {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--faint);
+  width: 40px;
+}
+
+.results-worst {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-style: italic;
+  text-align: center;
+}
+
+.results-worst strong {
+  color: var(--warn);
+  font-weight: 500;
+}
+
+.btn-primary {
+  background: none;
+  border: 1px solid var(--faint);
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  color: var(--text);
+  padding: 8px 32px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-primary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Stats Screen ──────────────────────────── */
+
+#screen-stats {
+  gap: 32px;
+}
+
+.stats-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.stats-title {
+  font-family: var(--font-serif);
+  font-weight: 300;
+  font-size: 1.8rem;
+}
+
+.stats-overview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  text-align: center;
+}
+
+.stats-overview-label {
+  font-family: var(--font-serif);
+  font-size: 0.75rem;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.stats-overview-val {
+  font-family: var(--font-mono);
+  font-size: 1.8rem;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.stats-mastery {
+  margin-top: 16px;
+}
+
+/* ── Utility ───────────────────────────────── */
+
+.fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="screen-start" class="screen active">
+    <div class="logo">
+      <h1>Vim Golf</h1>
+      <p>train your keystrokes</p>
+    </div>
+    <div class="mode-selector">
+      <div class="mode-group">
+        <h2>Timed</h2>
+        <button class="mode-btn" data-mode="timed" data-val="30">30s</button>
+        <button class="mode-btn" data-mode="timed" data-val="60">60s</button>
+        <button class="mode-btn" data-mode="timed" data-val="120">120s</button>
+      </div>
+      <div class="mode-group">
+        <h2>Count</h2>
+        <button class="mode-btn" data-mode="count" data-val="10">10</button>
+        <button class="mode-btn" data-mode="count" data-val="25">25</button>
+        <button class="mode-btn" data-mode="count" data-val="50">50</button>
+      </div>
+      <div class="mode-group">
+        <h2>Practice</h2>
+        <button class="mode-btn" data-mode="practice" data-val="deletion">Deletion</button>
+        <button class="mode-btn" data-mode="practice" data-val="change">Change</button>
+        <button class="mode-btn" data-mode="practice" data-val="insert">Insert</button>
+        <button class="mode-btn" data-mode="practice" data-val="navigation">Navigation</button>
+        <button class="mode-btn" data-mode="practice" data-val="yank">Copy &amp; Paste</button>
+        <button class="mode-btn" data-mode="practice" data-val="visual">Visual</button>
+        <button class="mode-btn" data-mode="practice" data-val="compound">Compound</button>
+      </div>
+    </div>
+    <div>
+      <button class="link-btn" id="btn-stats">statistics</button>
+    </div>
+    <div class="streak-display" id="streak-display"></div>
+  </div>
+
+  <div id="screen-game" class="screen">
+    <div id="game-header">
+      <span id="game-mode-label"></span>
+      <span style="display:flex;gap:16px;align-items:baseline;">
+        <span id="game-timer"></span>
+        <span id="game-counter"></span>
+        <button class="link-btn" id="btn-quit">end</button>
+      </span>
+    </div>
+    <p id="problem-desc"></p>
+    <div class="editor-container">
+      <div>
+        <div class="editor" id="editor"></div>
+      </div>
+      <div>
+        <div class="editor-section-label">Target</div>
+        <div class="editor target-editor" id="target-editor"></div>
+      </div>
+    </div>
+    <div id="status-bar">
+      <span id="mode-indicator">NORMAL</span>
+      <div id="keystroke-bar"></div>
+    </div>
+    <div id="command-line" class="hidden">
+      <span class="cmd-prefix">:</span><span id="command-text"></span><span class="char-cursor"> </span>
+    </div>
+  </div>
+
+  <div id="screen-feedback" class="screen"></div>
+  <div id="screen-results" class="screen"></div>
+  <div id="screen-stats" class="screen"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// VIM ENGINE
+// ══════════════════════════════════════════════════════════════
+
+class VimEngine {
+  constructor() {
+    this.buffer = [''];
+    this.cursor = { row: 0, col: 0 };
+    this.mode = 'NORMAL';
+    this.register = '';
+    this.registerLinewise = false;
+    this.pending = { count: '', operator: null, textObjType: null, awaitingChar: null, g: false };
+    this.visualAnchor = null;
+    this.lastFind = null;
+    this.commandBuffer = '';
+    this._dotKeys = [];
+    this._lastDot = [];
+    this._dotActive = false;
+    this._dotDirty = false;
+    this._isReplaying = false;
+    this._insertJPending = false;
+  }
+
+  loadBuffer(lines, cursor) {
+    this.buffer = lines.map(l => l);
+    this.cursor = { row: cursor.row, col: cursor.col };
+    this.mode = 'NORMAL';
+    this.register = '';
+    this.registerLinewise = false;
+    this.pending = { count: '', operator: null, textObjType: null, awaitingChar: null, g: false };
+    this.visualAnchor = null;
+    this.lastFind = null;
+    this.commandBuffer = '';
+    this._dotKeys = [];
+    this._lastDot = [];
+    this._dotActive = false;
+    this._dotDirty = false;
+    this._isReplaying = false;
+    this._insertJPending = false;
+    this._clampCursor();
+  }
+
+  clone() {
+    const e = new VimEngine();
+    e.buffer = this.buffer.map(l => l);
+    e.cursor = { ...this.cursor };
+    e.mode = this.mode;
+    e.register = this.register;
+    e.registerLinewise = this.registerLinewise;
+    return e;
+  }
+
+  processKey(key) {
+    if (!this._isReplaying) {
+      if (this.mode === 'NORMAL' && !this._dotActive &&
+          this.pending.count === '' && !this.pending.operator &&
+          !this.pending.awaitingChar && !this.pending.g && !this.pending.textObjType) {
+        this._dotKeys = [];
+        this._dotActive = true;
+        this._dotDirty = false;
+      }
+      if (this._dotActive) this._dotKeys.push(key);
+    }
+
+    switch (this.mode) {
+      case 'NORMAL': this._handleNormal(key); break;
+      case 'INSERT': this._handleInsert(key); break;
+      case 'VISUAL':
+      case 'VISUAL_LINE': this._handleVisual(key); break;
+      case 'COMMAND': this._handleCommand(key); break;
+    }
+
+    if (!this._isReplaying && this._dotActive && this.mode === 'NORMAL' &&
+        this.pending.count === '' && !this.pending.operator &&
+        !this.pending.awaitingChar && !this.pending.g && !this.pending.textObjType) {
+      if (this._dotDirty) {
+        this._lastDot = [...this._dotKeys];
+      }
+      this._dotActive = false;
+    }
+  }
+
+  _markDirty() { this._dotDirty = true; }
+
+  // ── Character Classification ────────────────────────────
+
+  _charClass(ch) {
+    if (!ch || /\s/.test(ch)) return 'space';
+    if (/[a-zA-Z0-9_]/.test(ch)) return 'word';
+    return 'punct';
+  }
+
+  _firstNonBlank(row) {
+    const line = this.buffer[row] || '';
+    const m = line.match(/\S/);
+    return m ? line.indexOf(m[0]) : 0;
+  }
+
+  _clampCursor() {
+    this.cursor.row = Math.max(0, Math.min(this.cursor.row, this.buffer.length - 1));
+    const len = this.buffer[this.cursor.row].length;
+    if (this.mode === 'INSERT') {
+      this.cursor.col = Math.max(0, Math.min(this.cursor.col, len));
+    } else {
+      this.cursor.col = Math.max(0, Math.min(this.cursor.col, Math.max(0, len - 1)));
+    }
+  }
+
+  _getCount() {
+    const c = parseInt(this.pending.count, 10);
+    return (isNaN(c) || c < 1) ? 1 : c;
+  }
+
+  _clearPending() {
+    this.pending.count = '';
+    this.pending.operator = null;
+    this.pending.textObjType = null;
+    this.pending.awaitingChar = null;
+    this.pending.g = false;
+  }
+
+  // ── Normal Mode Handler ─────────────────────────────────
+
+  _handleNormal(key) {
+    if (this.pending.awaitingChar) {
+      this._resolveAwaitingChar(key);
+      return;
+    }
+
+    if (this.pending.textObjType) {
+      this._resolveTextObject(key);
+      return;
+    }
+
+    if (this.pending.g) {
+      this.pending.g = false;
+      if (key === 'g') {
+        const count = this._getCount();
+        if (this.pending.count !== '') {
+          this.cursor.row = Math.min(count - 1, this.buffer.length - 1);
+        } else {
+          this.cursor.row = 0;
+        }
+        this.cursor.col = this._firstNonBlank(this.cursor.row);
+        this._clampCursor();
+        this._clearPending();
+        return;
+      }
+    }
+
+    if ((key >= '1' && key <= '9') || (key === '0' && this.pending.count.length > 0)) {
+      this.pending.count += key;
+      return;
+    }
+
+    if (key === 'd' || key === 'c' || key === 'y' || key === '>' || key === '<') {
+      if (this.pending.operator === key) {
+        const count = this._getCount();
+        this._operateOnLines(key, count);
+        this._clearPending();
+        return;
+      }
+      if (this.pending.operator && this.pending.operator !== key) {
+        this._clearPending();
+        return;
+      }
+      this.pending.operator = key;
+      return;
+    }
+
+    if (this.pending.operator && (key === 'i' || key === 'a')) {
+      this.pending.textObjType = key;
+      return;
+    }
+
+    if (key === 'f' || key === 'F' || key === 't' || key === 'T') {
+      this.pending.awaitingChar = key;
+      return;
+    }
+
+    if (key === 'r') {
+      this.pending.awaitingChar = 'r';
+      return;
+    }
+
+    if (key === 'g') {
+      this.pending.g = true;
+      return;
+    }
+
+    const motion = this._tryMotion(key);
+    if (motion) {
+      if (this.pending.operator) {
+        const range = this._motionToRange(motion);
+        this._applyOperator(this.pending.operator, range);
+      } else {
+        this.cursor = { row: motion.row, col: motion.col };
+        this._clampCursor();
+      }
+      this._clearPending();
+      return;
+    }
+
+    this._handleSimpleCommand(key);
+    this._clearPending();
+  }
+
+  // ── Insert Mode Handler ─────────────────────────────────
+
+  _handleInsert(key) {
+    if (key === 'Escape') {
+      this._exitInsert();
+      return;
+    }
+
+    if (this._insertJPending) {
+      this._insertJPending = false;
+      if (key === 'k') {
+        const line = this.buffer[this.cursor.row];
+        this.buffer[this.cursor.row] = line.slice(0, this.cursor.col - 1) + line.slice(this.cursor.col);
+        this.cursor.col--;
+        this._exitInsert();
+        return;
+      }
+    }
+
+    if (key.startsWith('Alt-')) {
+      if (key === 'Alt-j') { this._moveLineDown(); this._markDirty(); return; }
+      if (key === 'Alt-k') { this._moveLineUp(); this._markDirty(); return; }
+      return;
+    }
+
+    if (key === 'Backspace') {
+      if (this.cursor.col > 0) {
+        const line = this.buffer[this.cursor.row];
+        this.buffer[this.cursor.row] = line.slice(0, this.cursor.col - 1) + line.slice(this.cursor.col);
+        this.cursor.col--;
+        this._markDirty();
+      } else if (this.cursor.row > 0) {
+        const prevLen = this.buffer[this.cursor.row - 1].length;
+        this.buffer[this.cursor.row - 1] += this.buffer[this.cursor.row];
+        this.buffer.splice(this.cursor.row, 1);
+        this.cursor.row--;
+        this.cursor.col = prevLen;
+        this._markDirty();
+      }
+      return;
+    }
+
+    if (key === 'Enter') {
+      const line = this.buffer[this.cursor.row];
+      const before = line.slice(0, this.cursor.col);
+      const after = line.slice(this.cursor.col);
+      this.buffer[this.cursor.row] = before;
+      this.buffer.splice(this.cursor.row + 1, 0, after);
+      this.cursor.row++;
+      this.cursor.col = 0;
+      this._markDirty();
+      return;
+    }
+
+    if (key === 'Tab') {
+      const line = this.buffer[this.cursor.row];
+      this.buffer[this.cursor.row] = line.slice(0, this.cursor.col) + '  ' + line.slice(this.cursor.col);
+      this.cursor.col += 2;
+      this._markDirty();
+      return;
+    }
+
+    if (key.length === 1) {
+      const line = this.buffer[this.cursor.row];
+      this.buffer[this.cursor.row] = line.slice(0, this.cursor.col) + key + line.slice(this.cursor.col);
+      this.cursor.col++;
+      this._markDirty();
+      if (key === 'j') this._insertJPending = true;
+      return;
+    }
+  }
+
+  _exitInsert() {
+    this.mode = 'NORMAL';
+    this._insertJPending = false;
+    if (this.cursor.col > 0) this.cursor.col--;
+    this._clampCursor();
+  }
+
+  // ── Visual Mode Handler ─────────────────────────────────
+
+  _handleVisual(key) {
+    if (key === 'Escape') {
+      this.mode = 'NORMAL';
+      this.visualAnchor = null;
+      this._clearPending();
+      return;
+    }
+
+    if (key === 'v' && this.mode === 'VISUAL') {
+      this.mode = 'NORMAL';
+      this.visualAnchor = null;
+      this._clearPending();
+      return;
+    }
+
+    if (key === 'V' && this.mode === 'VISUAL_LINE') {
+      this.mode = 'NORMAL';
+      this.visualAnchor = null;
+      this._clearPending();
+      return;
+    }
+
+    if (key === 'v') { this.mode = 'VISUAL'; return; }
+    if (key === 'V') { this.mode = 'VISUAL_LINE'; return; }
+
+    if (key === 'd' || key === 'c' || key === 'y' || key === '>' || key === '<') {
+      const range = this._getVisualRange();
+      if (range) {
+        this._applyOperator(key, range);
+        if (key === '>' || key === '<') {
+          return;
+        }
+      }
+      if (key !== 'c') {
+        this.mode = 'NORMAL';
+        this.visualAnchor = null;
+      }
+      this._clearPending();
+      return;
+    }
+
+    if (key.startsWith('Alt-')) {
+      if (key === 'Alt-j') { this._moveLineDown(); this._markDirty(); return; }
+      if (key === 'Alt-k') { this._moveLineUp(); this._markDirty(); return; }
+    }
+
+    const motion = this._tryMotion(key);
+    if (motion) {
+      this.cursor = { row: motion.row, col: motion.col };
+      this._clampCursor();
+    }
+  }
+
+  _getVisualRange() {
+    if (!this.visualAnchor) return null;
+    const a = this.visualAnchor;
+    const c = this.cursor;
+    let start, end;
+
+    if (this.mode === 'VISUAL_LINE') {
+      const startRow = Math.min(a.row, c.row);
+      const endRow = Math.max(a.row, c.row);
+      return {
+        start: { row: startRow, col: 0 },
+        end: { row: endRow, col: this.buffer[endRow].length },
+        linewise: true, inclusive: true
+      };
+    }
+
+    if (a.row < c.row || (a.row === c.row && a.col <= c.col)) {
+      start = { ...a }; end = { ...c };
+    } else {
+      start = { ...c }; end = { ...a };
+    }
+    return { start, end, linewise: false, inclusive: true };
+  }
+
+  getVisualSelection() {
+    if ((this.mode !== 'VISUAL' && this.mode !== 'VISUAL_LINE') || !this.visualAnchor) return null;
+    return this._getVisualRange();
+  }
+
+  // ── Command Mode Handler ────────────────────────────────
+
+  _handleCommand(key) {
+    if (key === 'Escape') {
+      this.mode = 'NORMAL';
+      this.commandBuffer = '';
+      return;
+    }
+    if (key === 'Enter') {
+      this._executeCommand(this.commandBuffer);
+      this.mode = 'NORMAL';
+      this.commandBuffer = '';
+      return;
+    }
+    if (key === 'Backspace') {
+      if (this.commandBuffer.length > 0) {
+        this.commandBuffer = this.commandBuffer.slice(0, -1);
+      } else {
+        this.mode = 'NORMAL';
+      }
+      return;
+    }
+    if (key.length === 1) {
+      this.commandBuffer += key;
+    }
+  }
+
+  _executeCommand(cmd) {
+    const m = cmd.match(/^s\/((?:[^\\\/]|\\.)*)\\?\/((?:[^\\\/]|\\.)*)(?:\/(g?))?$/);
+    if (!m) {
+      const m2 = cmd.match(/^(\d+)$/);
+      if (m2) {
+        this.cursor.row = Math.min(parseInt(m2[1], 10) - 1, this.buffer.length - 1);
+        this.cursor.row = Math.max(0, this.cursor.row);
+        this.cursor.col = this._firstNonBlank(this.cursor.row);
+        this._clampCursor();
+      }
+      return;
+    }
+    const search = m[1];
+    const replace = m[2];
+    const global = m[3] === 'g';
+    const line = this.buffer[this.cursor.row];
+    try {
+      const re = new RegExp(search.replace(/\\([/])/g, '$1'), global ? 'g' : '');
+      this.buffer[this.cursor.row] = line.replace(re, replace.replace(/\\([/])/g, '$1'));
+      this._markDirty();
+    } catch (e) {
+      const idx = line.indexOf(search);
+      if (idx !== -1) {
+        if (global) {
+          this.buffer[this.cursor.row] = line.split(search).join(replace);
+        } else {
+          this.buffer[this.cursor.row] = line.slice(0, idx) + replace + line.slice(idx + search.length);
+        }
+        this._markDirty();
+      }
+    }
+    this._clampCursor();
+  }
+
+  // ── Motions ─────────────────────────────────────────────
+
+  _tryMotion(key) {
+    const count = this._getCount();
+
+    switch (key) {
+      case 'h': return this._motionH(count);
+      case 'l': return this._motionL(count);
+      case 'j': return this._motionJ(count);
+      case 'k': return this._motionK(count);
+      case 'w': return this._motionW(count);
+      case 'b': return this._motionB(count);
+      case 'e': return this._motionE(count);
+      case 'W': return this._motionBigW(count);
+      case 'B': return this._motionBigB(count);
+      case 'E': return this._motionBigE(count);
+      case '0': return { row: this.cursor.row, col: 0, linewise: false, inclusive: false };
+      case '^': return { row: this.cursor.row, col: this._firstNonBlank(this.cursor.row), linewise: false, inclusive: false };
+      case '$': return this._motionDollar(count);
+      case '{': return this._motionParaUp(count);
+      case '}': return this._motionParaDown(count);
+      case 'G': return this._motionG(count);
+      case '%': return this._motionPercent();
+      case 'H': return { row: 0, col: this._firstNonBlank(0), linewise: true, inclusive: false };
+      case 'M': {
+        const mid = Math.floor((this.buffer.length - 1) / 2);
+        return { row: mid, col: this._firstNonBlank(mid), linewise: true, inclusive: false };
+      }
+      case 'L': {
+        const last = this.buffer.length - 1;
+        return { row: last, col: this._firstNonBlank(last), linewise: true, inclusive: false };
+      }
+      case ',': return this._repeatFind(true);
+    }
+    return null;
+  }
+
+  _motionH(count) {
+    return { row: this.cursor.row, col: Math.max(0, this.cursor.col - count), linewise: false, inclusive: false };
+  }
+
+  _motionL(count) {
+    const maxCol = Math.max(0, this.buffer[this.cursor.row].length - 1);
+    return { row: this.cursor.row, col: Math.min(maxCol, this.cursor.col + count), linewise: false, inclusive: false };
+  }
+
+  _motionJ(count) {
+    const row = Math.min(this.buffer.length - 1, this.cursor.row + count);
+    return { row, col: this.cursor.col, linewise: true, inclusive: false };
+  }
+
+  _motionK(count) {
+    const row = Math.max(0, this.cursor.row - count);
+    return { row, col: this.cursor.col, linewise: true, inclusive: false };
+  }
+
+  _motionW(count) {
+    let row = this.cursor.row, col = this.cursor.col;
+    for (let n = 0; n < count; n++) {
+      let line = this.buffer[row];
+      if (col < line.length) {
+        const cls = this._charClass(line[col]);
+        if (cls !== 'space') {
+          while (col < line.length && this._charClass(line[col]) === cls) col++;
+        }
+      }
+      while (true) {
+        line = this.buffer[row];
+        while (col < line.length && this._charClass(line[col]) === 'space') col++;
+        if (col < line.length) break;
+        if (row >= this.buffer.length - 1) break;
+        row++; col = 0;
+      }
+    }
+    return { row, col, linewise: false, inclusive: false };
+  }
+
+  _motionB(count) {
+    let row = this.cursor.row, col = this.cursor.col;
+    for (let n = 0; n < count; n++) {
+      col--;
+      while (true) {
+        if (col < 0) {
+          if (row <= 0) { col = 0; break; }
+          row--; col = this.buffer[row].length - 1; continue;
+        }
+        if (this._charClass(this.buffer[row][col]) !== 'space') break;
+        col--;
+      }
+      if (col >= 0) {
+        const cls = this._charClass(this.buffer[row][col]);
+        while (col > 0 && this._charClass(this.buffer[row][col - 1]) === cls) col--;
+      }
+      col = Math.max(0, col);
+    }
+    return { row, col, linewise: false, inclusive: false };
+  }
+
+  _motionE(count) {
+    let row = this.cursor.row, col = this.cursor.col;
+    for (let n = 0; n < count; n++) {
+      col++;
+      while (true) {
+        const line = this.buffer[row];
+        if (col >= line.length) {
+          if (row >= this.buffer.length - 1) { col = Math.max(0, line.length - 1); break; }
+          row++; col = 0; continue;
+        }
+        if (this._charClass(line[col]) !== 'space') break;
+        col++;
+      }
+      const line = this.buffer[row];
+      if (col < line.length) {
+        const cls = this._charClass(line[col]);
+        while (col < line.length - 1 && this._charClass(line[col + 1]) === cls) col++;
+      }
+    }
+    return { row, col, linewise: false, inclusive: true };
+  }
+
+  _motionBigW(count) {
+    let row = this.cursor.row, col = this.cursor.col;
+    for (let n = 0; n < count; n++) {
+      let line = this.buffer[row];
+      while (col < line.length && this._charClass(line[col]) !== 'space') col++;
+      while (true) {
+        line = this.buffer[row];
+        while (col < line.length && this._charClass(line[col]) === 'space') col++;
+        if (col < line.length) break;
+        if (row >= this.buffer.length - 1) break;
+        row++; col = 0;
+      }
+    }
+    return { row, col, linewise: false, inclusive: false };
+  }
+
+  _motionBigB(count) {
+    let row = this.cursor.row, col = this.cursor.col;
+    for (let n = 0; n < count; n++) {
+      col--;
+      while (true) {
+        if (col < 0) {
+          if (row <= 0) { col = 0; break; }
+          row--; col = this.buffer[row].length - 1; continue;
+        }
+        if (this._charClass(this.buffer[row][col]) !== 'space') break;
+        col--;
+      }
+      if (col >= 0) {
+        while (col > 0 && this._charClass(this.buffer[row][col - 1]) !== 'space') col--;
+      }
+      col = Math.max(0, col);
+    }
+    return { row, col, linewise: false, inclusive: false };
+  }
+
+  _motionBigE(count) {
+    let row = this.cursor.row, col = this.cursor.col;
+    for (let n = 0; n < count; n++) {
+      col++;
+      while (true) {
+        const line = this.buffer[row];
+        if (col >= line.length) {
+          if (row >= this.buffer.length - 1) { col = Math.max(0, line.length - 1); break; }
+          row++; col = 0; continue;
+        }
+        if (this._charClass(line[col]) !== 'space') break;
+        col++;
+      }
+      const line = this.buffer[row];
+      if (col < line.length) {
+        while (col < line.length - 1 && this._charClass(line[col + 1]) !== 'space') col++;
+      }
+    }
+    return { row, col, linewise: false, inclusive: true };
+  }
+
+  _motionDollar(count) {
+    const row = Math.min(this.buffer.length - 1, this.cursor.row + count - 1);
+    return { row, col: Math.max(0, this.buffer[row].length - 1), linewise: false, inclusive: true };
+  }
+
+  _motionG(count) {
+    if (this.pending.count !== '') {
+      const row = Math.min(count - 1, this.buffer.length - 1);
+      return { row: Math.max(0, row), col: this._firstNonBlank(Math.max(0, row)), linewise: true, inclusive: false };
+    }
+    const last = this.buffer.length - 1;
+    return { row: last, col: this._firstNonBlank(last), linewise: true, inclusive: false };
+  }
+
+  _motionParaUp(count) {
+    let row = this.cursor.row;
+    for (let n = 0; n < count; n++) {
+      if (row > 0) row--;
+      while (row > 0 && this.buffer[row].trim() !== '') row--;
+    }
+    return { row, col: 0, linewise: true, inclusive: false };
+  }
+
+  _motionParaDown(count) {
+    let row = this.cursor.row;
+    for (let n = 0; n < count; n++) {
+      if (row < this.buffer.length - 1) row++;
+      while (row < this.buffer.length - 1 && this.buffer[row].trim() !== '') row++;
+    }
+    return { row, col: 0, linewise: true, inclusive: false };
+  }
+
+  _motionPercent() {
+    const line = this.buffer[this.cursor.row];
+    const pairs = { '(': ')', ')': '(', '{': '}', '}': '{', '[': ']', ']': '[' };
+    let ch = line[this.cursor.col];
+    let col = this.cursor.col;
+
+    if (!pairs[ch]) {
+      for (let c = this.cursor.col; c < line.length; c++) {
+        if (pairs[line[c]]) { ch = line[c]; col = c; break; }
+      }
+      if (!pairs[ch]) return null;
+    }
+
+    const open = '({['.includes(ch);
+    const match = pairs[ch];
+    let depth = 1;
+    let row = this.cursor.row;
+    let c = col;
+
+    if (open) {
+      c++;
+      while (row < this.buffer.length) {
+        const l = this.buffer[row];
+        while (c < l.length) {
+          if (l[c] === ch) depth++;
+          else if (l[c] === match) depth--;
+          if (depth === 0) return { row, col: c, linewise: false, inclusive: true };
+          c++;
+        }
+        row++; c = 0;
+      }
+    } else {
+      c--;
+      while (row >= 0) {
+        const l = this.buffer[row];
+        while (c >= 0) {
+          if (l[c] === ch) depth++;
+          else if (l[c] === match) depth--;
+          if (depth === 0) return { row, col: c, linewise: false, inclusive: true };
+          c--;
+        }
+        row--; if (row >= 0) c = this.buffer[row].length - 1;
+      }
+    }
+    return null;
+  }
+
+  // ── Find Motions (f/F/t/T) ──────────────────────────────
+
+  _resolveAwaitingChar(key) {
+    const type = this.pending.awaitingChar;
+    this.pending.awaitingChar = null;
+
+    if (type === 'r') {
+      this._replaceChar(key);
+      this._clearPending();
+      return;
+    }
+
+    const count = this._getCount();
+    const result = this._findChar(type, key, count);
+
+    if (result) {
+      this.lastFind = { type, char: key };
+      if (this.pending.operator) {
+        const range = this._motionToRange(result);
+        this._applyOperator(this.pending.operator, range);
+      } else {
+        this.cursor = { row: result.row, col: result.col };
+      }
+    }
+    this._clearPending();
+  }
+
+  _findChar(type, ch, count) {
+    const line = this.buffer[this.cursor.row];
+    let col = this.cursor.col;
+    let found = 0;
+
+    if (type === 'f' || type === 't') {
+      for (let c = col + 1; c < line.length; c++) {
+        if (line[c] === ch) {
+          found++;
+          if (found === count) {
+            const targetCol = type === 't' ? c - 1 : c;
+            return { row: this.cursor.row, col: targetCol, linewise: false, inclusive: true };
+          }
+        }
+      }
+    } else {
+      for (let c = col - 1; c >= 0; c--) {
+        if (line[c] === ch) {
+          found++;
+          if (found === count) {
+            const targetCol = type === 'T' ? c + 1 : c;
+            return { row: this.cursor.row, col: targetCol, linewise: false, inclusive: false };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  _repeatFind(reverse) {
+    if (!this.lastFind) return null;
+    let type = this.lastFind.type;
+    if (reverse) {
+      if (type === 'f') type = 'F';
+      else if (type === 'F') type = 'f';
+      else if (type === 't') type = 'T';
+      else if (type === 'T') type = 't';
+    }
+    return this._findChar(type, this.lastFind.char, 1);
+  }
+
+  // ── Text Objects ────────────────────────────────────────
+
+  _resolveTextObject(key) {
+    const type = this.pending.textObjType;
+    this.pending.textObjType = null;
+
+    const range = this._getTextObjRange(type, key);
+    if (range && this.pending.operator) {
+      this._applyOperator(this.pending.operator, range);
+    }
+    this._clearPending();
+  }
+
+  _getTextObjRange(type, key) {
+    switch (key) {
+      case 'w': return this._textObjWord(type === 'a');
+      case '"': return this._textObjQuote('"', type === 'a');
+      case "'": return this._textObjQuote("'", type === 'a');
+      case '`': return this._textObjQuote('`', type === 'a');
+      case '(': case ')': case 'b': return this._textObjBracket('(', ')', type === 'a');
+      case '{': case '}': case 'B': return this._textObjBracket('{', '}', type === 'a');
+      case '[': case ']': return this._textObjBracket('[', ']', type === 'a');
+      case '<': case '>': return this._textObjBracket('<', '>', type === 'a');
+      case 't': return this._textObjTag(type === 'a');
+    }
+    return null;
+  }
+
+  _textObjWord(around) {
+    const line = this.buffer[this.cursor.row];
+    const col = this.cursor.col;
+    if (line.length === 0) return null;
+
+    const cls = this._charClass(line[col]);
+    let start = col, end = col;
+
+    if (cls === 'space') {
+      while (start > 0 && this._charClass(line[start - 1]) === 'space') start--;
+      while (end < line.length - 1 && this._charClass(line[end + 1]) === 'space') end++;
+    } else {
+      while (start > 0 && this._charClass(line[start - 1]) === cls) start--;
+      while (end < line.length - 1 && this._charClass(line[end + 1]) === cls) end++;
+      if (around) {
+        if (end < line.length - 1 && this._charClass(line[end + 1]) === 'space') {
+          while (end < line.length - 1 && this._charClass(line[end + 1]) === 'space') end++;
+        } else if (start > 0 && this._charClass(line[start - 1]) === 'space') {
+          while (start > 0 && this._charClass(line[start - 1]) === 'space') start--;
+        }
+      }
+    }
+
+    return {
+      start: { row: this.cursor.row, col: start },
+      end: { row: this.cursor.row, col: end },
+      linewise: false, inclusive: true
+    };
+  }
+
+  _textObjQuote(quote, around) {
+    const line = this.buffer[this.cursor.row];
+    let openIdx = -1, closeIdx = -1;
+    let found = false;
+
+    const positions = [];
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === quote && (i === 0 || line[i - 1] !== '\\')) {
+        positions.push(i);
+      }
+    }
+
+    for (let i = 0; i < positions.length - 1; i += 2) {
+      if (positions[i] <= this.cursor.col && positions[i + 1] >= this.cursor.col) {
+        openIdx = positions[i];
+        closeIdx = positions[i + 1];
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      for (let i = 0; i < positions.length - 1; i += 2) {
+        if (positions[i] > this.cursor.col) {
+          openIdx = positions[i];
+          closeIdx = positions[i + 1];
+          found = true;
+          break;
+        }
+      }
+    }
+
+    if (!found) return null;
+
+    const startCol = around ? openIdx : openIdx + 1;
+    const endCol = around ? closeIdx : closeIdx - 1;
+    if (startCol > endCol && !around) {
+      return {
+        start: { row: this.cursor.row, col: openIdx + 1 },
+        end: { row: this.cursor.row, col: openIdx },
+        linewise: false, inclusive: true, empty: true
+      };
+    }
+    return {
+      start: { row: this.cursor.row, col: startCol },
+      end: { row: this.cursor.row, col: endCol },
+      linewise: false, inclusive: true
+    };
+  }
+
+  _textObjBracket(open, close, around) {
+    let row = this.cursor.row, col = this.cursor.col;
+    let depth = 0;
+    let foundOpen = false;
+
+    let sr = row, sc = col;
+    if (this.buffer[row][col] === close) {
+      depth = 1;
+      sc = col;
+      sr = row;
+    } else if (this.buffer[row][col] === open) {
+      sr = row; sc = col;
+      foundOpen = true;
+    }
+
+    if (!foundOpen) {
+      let r = row, c = col;
+      depth = 0;
+      while (r >= 0) {
+        const line = this.buffer[r];
+        const startC = (r === row) ? c : line.length - 1;
+        for (let i = startC; i >= 0; i--) {
+          if (line[i] === close) depth++;
+          if (line[i] === open) {
+            if (depth === 0) { sr = r; sc = i; foundOpen = true; break; }
+            depth--;
+          }
+        }
+        if (foundOpen) break;
+        r--;
+      }
+    }
+
+    if (!foundOpen) return null;
+
+    let er = sr, ec = sc;
+    depth = 0;
+    let foundClose = false;
+    for (let r = sr; r < this.buffer.length; r++) {
+      const line = this.buffer[r];
+      const startC = (r === sr) ? sc : 0;
+      for (let i = startC; i < line.length; i++) {
+        if (line[i] === open) depth++;
+        if (line[i] === close) {
+          depth--;
+          if (depth === 0) { er = r; ec = i; foundClose = true; break; }
+        }
+      }
+      if (foundClose) break;
+    }
+
+    if (!foundClose) return null;
+
+    if (around) {
+      return {
+        start: { row: sr, col: sc },
+        end: { row: er, col: ec },
+        linewise: false, inclusive: true
+      };
+    }
+
+    let startRow = sr, startCol = sc + 1;
+    let endRow = er, endCol = ec - 1;
+
+    if (startCol >= this.buffer[startRow].length && startRow < endRow) {
+      startRow++;
+      startCol = 0;
+    }
+    if (endCol < 0 && endRow > startRow) {
+      endRow--;
+      endCol = Math.max(0, this.buffer[endRow].length - 1);
+    }
+
+    if (startRow > endRow || (startRow === endRow && startCol > endCol)) {
+      return {
+        start: { row: sr, col: sc + 1 },
+        end: { row: sr, col: sc },
+        linewise: false, inclusive: true, empty: true
+      };
+    }
+
+    return {
+      start: { row: startRow, col: startCol },
+      end: { row: endRow, col: endCol },
+      linewise: false, inclusive: true
+    };
+  }
+
+  _textObjTag(around) {
+    return null;
+  }
+
+  // ── Operators ───────────────────────────────────────────
+
+  _motionToRange(motion) {
+    if (motion.linewise) {
+      const startRow = Math.min(this.cursor.row, motion.row);
+      const endRow = Math.max(this.cursor.row, motion.row);
+      return {
+        start: { row: startRow, col: 0 },
+        end: { row: endRow, col: this.buffer[endRow].length },
+        linewise: true, inclusive: true
+      };
+    }
+
+    let start, end;
+    const curPos = this.cursor.row * 10000 + this.cursor.col;
+    const motPos = motion.row * 10000 + motion.col;
+
+    if (curPos <= motPos) {
+      start = { ...this.cursor };
+      end = { row: motion.row, col: motion.col };
+    } else {
+      start = { row: motion.row, col: motion.col };
+      end = { ...this.cursor };
+    }
+
+    return { start, end, linewise: false, inclusive: !!motion.inclusive };
+  }
+
+  _applyOperator(op, range) {
+    switch (op) {
+      case 'd': this._deleteRange(range); break;
+      case 'c': this._deleteRange(range); this.mode = 'INSERT'; break;
+      case 'y': this._yankRange(range); break;
+      case '>': this._indentRange(range, 1); break;
+      case '<': this._indentRange(range, -1); break;
+    }
+  }
+
+  _deleteRange(range) {
+    if (range.empty) {
+      this.register = '';
+      this.registerLinewise = false;
+      this.cursor = { ...range.start };
+      this._clampCursor();
+      this._markDirty();
+      return;
+    }
+
+    if (range.linewise) {
+      const startRow = range.start.row;
+      const count = range.end.row - range.start.row + 1;
+      const deleted = this.buffer.splice(startRow, count);
+      this.register = deleted.join('\n');
+      this.registerLinewise = true;
+      if (this.buffer.length === 0) this.buffer = [''];
+      this.cursor.row = Math.min(startRow, this.buffer.length - 1);
+      this.cursor.col = this._firstNonBlank(this.cursor.row);
+    } else {
+      const sr = range.start.row, sc = range.start.col;
+      const er = range.end.row, ec = range.inclusive ? range.end.col + 1 : range.end.col;
+
+      if (sr === er) {
+        const line = this.buffer[sr];
+        this.register = line.slice(sc, ec);
+        this.registerLinewise = false;
+        this.buffer[sr] = line.slice(0, sc) + line.slice(ec);
+      } else {
+        const startLine = this.buffer[sr];
+        const endLine = this.buffer[er];
+        let deleted = startLine.slice(sc);
+        for (let r = sr + 1; r < er; r++) deleted += '\n' + this.buffer[r];
+        deleted += '\n' + endLine.slice(0, ec);
+        this.register = deleted;
+        this.registerLinewise = false;
+        this.buffer[sr] = startLine.slice(0, sc) + endLine.slice(ec);
+        this.buffer.splice(sr + 1, er - sr);
+      }
+      this.cursor = { row: sr, col: sc };
+    }
+    this._clampCursor();
+    this._markDirty();
+  }
+
+  _yankRange(range) {
+    if (range.empty) {
+      this.register = '';
+      this.registerLinewise = false;
+      return;
+    }
+    if (range.linewise) {
+      const startRow = range.start.row;
+      const endRow = range.end.row;
+      const lines = [];
+      for (let r = startRow; r <= endRow; r++) lines.push(this.buffer[r]);
+      this.register = lines.join('\n');
+      this.registerLinewise = true;
+    } else {
+      const sr = range.start.row, sc = range.start.col;
+      const er = range.end.row, ec = range.inclusive ? range.end.col + 1 : range.end.col;
+      if (sr === er) {
+        this.register = this.buffer[sr].slice(sc, ec);
+      } else {
+        let text = this.buffer[sr].slice(sc);
+        for (let r = sr + 1; r < er; r++) text += '\n' + this.buffer[r];
+        text += '\n' + this.buffer[er].slice(0, ec);
+        this.register = text;
+      }
+      this.registerLinewise = false;
+    }
+  }
+
+  _indentRange(range, dir) {
+    const startRow = range.linewise ? range.start.row : Math.min(range.start.row, range.end.row);
+    const endRow = range.linewise ? range.end.row : Math.max(range.start.row, range.end.row);
+    for (let r = startRow; r <= endRow; r++) {
+      if (dir > 0) {
+        this.buffer[r] = '  ' + this.buffer[r];
+      } else {
+        this.buffer[r] = this.buffer[r].replace(/^  /, '');
+      }
+    }
+    this.cursor.col = this._firstNonBlank(this.cursor.row);
+    this._clampCursor();
+    this._markDirty();
+  }
+
+  _operateOnLines(op, count) {
+    const startRow = this.cursor.row;
+    const endRow = Math.min(startRow + count - 1, this.buffer.length - 1);
+
+    if (op === 'c') {
+      const indent = this.buffer[startRow].match(/^(\s*)/)[1];
+      const deleted = this.buffer.splice(startRow, endRow - startRow + 1, indent);
+      this.register = deleted.join('\n');
+      this.registerLinewise = true;
+      this.cursor.row = startRow;
+      this.cursor.col = indent.length;
+      this.mode = 'INSERT';
+      this._markDirty();
+      return;
+    }
+
+    const range = {
+      start: { row: startRow, col: 0 },
+      end: { row: endRow, col: this.buffer[endRow].length },
+      linewise: true, inclusive: true
+    };
+    this._applyOperator(op, range);
+  }
+
+  // ── Simple Commands ─────────────────────────────────────
+
+  _handleSimpleCommand(key) {
+    const count = this._getCount();
+
+    switch (key) {
+      case 'x': {
+        for (let n = 0; n < count; n++) {
+          const line = this.buffer[this.cursor.row];
+          if (line.length > 0 && this.cursor.col < line.length) {
+            this.register = line[this.cursor.col];
+            this.registerLinewise = false;
+            this.buffer[this.cursor.row] = line.slice(0, this.cursor.col) + line.slice(this.cursor.col + 1);
+            this._markDirty();
+          }
+        }
+        this._clampCursor();
+        return true;
+      }
+
+      case 'D': {
+        const line = this.buffer[this.cursor.row];
+        this.register = line.slice(this.cursor.col);
+        this.registerLinewise = false;
+        this.buffer[this.cursor.row] = line.slice(0, this.cursor.col);
+        this._clampCursor();
+        this._markDirty();
+        return true;
+      }
+
+      case 'C': {
+        const line = this.buffer[this.cursor.row];
+        this.register = line.slice(this.cursor.col);
+        this.registerLinewise = false;
+        this.buffer[this.cursor.row] = line.slice(0, this.cursor.col);
+        this.mode = 'INSERT';
+        this._markDirty();
+        return true;
+      }
+
+      case 'J': {
+        for (let n = 0; n < count; n++) {
+          if (this.cursor.row < this.buffer.length - 1) {
+            const curLine = this.buffer[this.cursor.row];
+            const nextLine = this.buffer[this.cursor.row + 1].trimStart();
+            const joinCol = curLine.length;
+            this.buffer[this.cursor.row] = curLine + (nextLine ? ' ' + nextLine : '');
+            this.buffer.splice(this.cursor.row + 1, 1);
+            this.cursor.col = joinCol;
+            this._markDirty();
+          }
+        }
+        return true;
+      }
+
+      case 'i':
+        this.mode = 'INSERT';
+        return true;
+
+      case 'a':
+        this.mode = 'INSERT';
+        if (this.buffer[this.cursor.row].length > 0) this.cursor.col++;
+        return true;
+
+      case 'A':
+        this.mode = 'INSERT';
+        this.cursor.col = this.buffer[this.cursor.row].length;
+        return true;
+
+      case 'I':
+        this.mode = 'INSERT';
+        this.cursor.col = this._firstNonBlank(this.cursor.row);
+        return true;
+
+      case 'o':
+        this.buffer.splice(this.cursor.row + 1, 0, '');
+        this.cursor.row++;
+        this.cursor.col = 0;
+        this.mode = 'INSERT';
+        this._markDirty();
+        return true;
+
+      case 'O':
+        this.buffer.splice(this.cursor.row, 0, '');
+        this.cursor.col = 0;
+        this.mode = 'INSERT';
+        this._markDirty();
+        return true;
+
+      case 'p': this._pasteAfter(); return true;
+      case 'P': this._pasteBefore(); return true;
+
+      case 'v':
+        this.mode = 'VISUAL';
+        this.visualAnchor = { ...this.cursor };
+        return true;
+
+      case 'V':
+        this.mode = 'VISUAL_LINE';
+        this.visualAnchor = { ...this.cursor };
+        return true;
+
+      case '.': this._dotRepeat(); return true;
+
+      case ';': case ':':
+        this.mode = 'COMMAND';
+        this.commandBuffer = '';
+        return true;
+
+      case 's': {
+        const line = this.buffer[this.cursor.row];
+        if (line.length > 0 && this.cursor.col < line.length) {
+          this.register = line[this.cursor.col];
+          this.registerLinewise = false;
+          this.buffer[this.cursor.row] = line.slice(0, this.cursor.col) + line.slice(this.cursor.col + 1);
+          this._markDirty();
+        }
+        this.mode = 'INSERT';
+        return true;
+      }
+
+      case 'S': {
+        this.register = this.buffer[this.cursor.row];
+        this.registerLinewise = true;
+        const indent = this.buffer[this.cursor.row].match(/^(\s*)/)[1];
+        this.buffer[this.cursor.row] = indent;
+        this.cursor.col = indent.length;
+        this.mode = 'INSERT';
+        this._markDirty();
+        return true;
+      }
+
+      case 'Alt-j':
+        for (let n = 0; n < count; n++) this._moveLineDown();
+        this._markDirty();
+        return true;
+
+      case 'Alt-k':
+        for (let n = 0; n < count; n++) this._moveLineUp();
+        this._markDirty();
+        return true;
+    }
+
+    return false;
+  }
+
+  _replaceChar(ch) {
+    const line = this.buffer[this.cursor.row];
+    if (this.cursor.col < line.length) {
+      const count = this._getCount();
+      for (let n = 0; n < count && this.cursor.col + n < line.length; n++) {
+        const pos = this.cursor.col + n;
+        this.buffer[this.cursor.row] = this.buffer[this.cursor.row].slice(0, pos) + ch + this.buffer[this.cursor.row].slice(pos + 1);
+      }
+      this.cursor.col = Math.min(this.cursor.col + count - 1, this.buffer[this.cursor.row].length - 1);
+      this._markDirty();
+    }
+  }
+
+  _pasteAfter() {
+    if (!this.register) return;
+    if (this.registerLinewise) {
+      const lines = this.register.split('\n');
+      this.buffer.splice(this.cursor.row + 1, 0, ...lines);
+      this.cursor.row += 1;
+      this.cursor.col = this._firstNonBlank(this.cursor.row);
+    } else {
+      const line = this.buffer[this.cursor.row];
+      const col = this.cursor.col + 1;
+      this.buffer[this.cursor.row] = line.slice(0, col) + this.register + line.slice(col);
+      this.cursor.col = col + this.register.length - 1;
+    }
+    this._clampCursor();
+    this._markDirty();
+  }
+
+  _pasteBefore() {
+    if (!this.register) return;
+    if (this.registerLinewise) {
+      const lines = this.register.split('\n');
+      this.buffer.splice(this.cursor.row, 0, ...lines);
+      this.cursor.col = this._firstNonBlank(this.cursor.row);
+    } else {
+      const line = this.buffer[this.cursor.row];
+      const col = this.cursor.col;
+      this.buffer[this.cursor.row] = line.slice(0, col) + this.register + line.slice(col);
+      this.cursor.col = col + this.register.length - 1;
+    }
+    this._clampCursor();
+    this._markDirty();
+  }
+
+  _moveLineDown() {
+    if (this.cursor.row < this.buffer.length - 1) {
+      const tmp = this.buffer[this.cursor.row];
+      this.buffer[this.cursor.row] = this.buffer[this.cursor.row + 1];
+      this.buffer[this.cursor.row + 1] = tmp;
+      this.cursor.row++;
+    }
+  }
+
+  _moveLineUp() {
+    if (this.cursor.row > 0) {
+      const tmp = this.buffer[this.cursor.row];
+      this.buffer[this.cursor.row] = this.buffer[this.cursor.row - 1];
+      this.buffer[this.cursor.row - 1] = tmp;
+      this.cursor.row--;
+    }
+  }
+
+  _dotRepeat() {
+    if (!this._lastDot || this._lastDot.length === 0) return;
+    this._isReplaying = true;
+    for (const key of this._lastDot) {
+      this.processKey(key);
+    }
+    this._isReplaying = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// PROBLEM GENERATOR
+// ══════════════════════════════════════════════════════════════
+
+class ProblemGenerator {
+  constructor() {
+    this.varNames = ['count','total','result','index','value','buffer','output','config','handler','parser',
+                     'data','items','response','request','options','element','node','target','source','limit'];
+    this.funcNames = ['getData','processItem','handleEvent','renderView','parseInput','validateForm',
+                      'fetchData','updateState','transformData','calculateTotal','formatOutput',
+                      'initModule','createNode','deleteItem','sortList','mergeArrays'];
+    this.strLiterals = ['hello','world','test','example','active','primary','default','success',
+                        'loading','enabled','visible','complete','pending','ready','error'];
+    this.types = ['string','number','boolean','Result','Config','Buffer','Response','Options','Handler','Item'];
+    this.categories = ['deletion','change','insert','navigation','yank','visual','compound'];
+  }
+
+  _pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  _pickN(arr, n) {
+    const shuffled = [...arr].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, n);
+  }
+  _randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+  generate(category, difficulty) {
+    if (!category) category = this._pick(this.categories);
+    if (!difficulty) difficulty = this._randInt(1, 3);
+    difficulty = Math.max(1, Math.min(3, difficulty));
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      let problem;
+      try {
+        switch (category) {
+          case 'deletion': problem = this._genDeletion(difficulty); break;
+          case 'change': problem = this._genChange(difficulty); break;
+          case 'insert': problem = this._genInsert(difficulty); break;
+          case 'navigation': problem = this._genNavigation(difficulty); break;
+          case 'yank': problem = this._genYank(difficulty); break;
+          case 'visual': problem = this._genVisual(difficulty); break;
+          case 'compound': problem = this._genCompound(difficulty); break;
+          default: problem = this._genDeletion(difficulty);
+        }
+      } catch (e) { continue; }
+      if (problem && this._verify(problem)) return problem;
+    }
+    return this._fallback(category);
+  }
+
+  generateWeighted(weights) {
+    const entries = Object.entries(weights);
+    const total = entries.reduce((s, [, w]) => s + w, 0);
+    let r = Math.random() * total;
+    for (const [cat, w] of entries) {
+      r -= w;
+      if (r <= 0) return this.generate(cat);
+    }
+    return this.generate(entries[entries.length - 1][0]);
+  }
+
+  _verify(problem) {
+    const engine = new VimEngine();
+    engine.loadBuffer(problem.initialBuffer.map(l => l), { ...problem.cursorPos });
+    for (const key of problem.optimalKeystrokes) {
+      engine.processKey(key);
+    }
+    const bufMatch = engine.buffer.length === problem.targetBuffer.length &&
+      engine.buffer.every((line, i) => line === problem.targetBuffer[i]);
+    if (problem.targetCursorPos) {
+      return bufMatch && engine.cursor.row === problem.targetCursorPos.row && engine.cursor.col === problem.targetCursorPos.col;
+    }
+    return bufMatch;
+  }
+
+  // ── Code Snippet Templates ──────────────────────────────
+
+  _jsSnippet() {
+    const fn = this._pick(this.funcNames);
+    const [p1, p2] = this._pickN(this.varNames, 2);
+    const [v1, v2, v3] = this._pickN(this.varNames, 3);
+    const str = this._pick(this.strLiterals);
+    return [
+      `function ${fn}(${p1}, ${p2}) {`,
+      `  const ${v1} = ${p1}.filter(x => x.${str});`,
+      `  let ${v2} = ${v1}.length;`,
+      `  const ${v3} = "${str}";`,
+      `  return ${v2} > 0 ? ${v1} : null;`,
+      `}`,
+    ];
+  }
+
+  _pySnippet() {
+    const fn = this._pick(this.funcNames);
+    const [p1, p2] = this._pickN(this.varNames, 2);
+    const [v1, v2] = this._pickN(this.varNames, 2);
+    const str = this._pick(this.strLiterals);
+    return [
+      `def ${fn}(${p1}, ${p2}):`,
+      `    ${v1} = [x for x in ${p1} if x.${str}]`,
+      `    ${v2} = len(${v1})`,
+      `    return "${str}" if ${v2} > 0 else None`,
+    ];
+  }
+
+  _jsObjectSnippet() {
+    const obj = this._pick(this.varNames);
+    const [k1, k2, k3] = this._pickN(this.varNames, 3);
+    const [s1, s2] = this._pickN(this.strLiterals, 2);
+    return [
+      `const ${obj} = {`,
+      `  ${k1}: "${s1}",`,
+      `  ${k2}: ${this._randInt(1, 100)},`,
+      `  ${k3}: "${s2}",`,
+      `};`,
+    ];
+  }
+
+  _rustSnippet() {
+    const fn = this._pick(this.funcNames);
+    const [p1] = this._pickN(this.varNames, 1);
+    const [v1, v2] = this._pickN(this.varNames, 2);
+    const type = this._pick(this.types);
+    return [
+      `fn ${fn}(${p1}: &str) -> ${type} {`,
+      `    let ${v1} = ${p1}.to_string();`,
+      `    let ${v2} = ${v1}.len();`,
+      `    ${type}::new(${v2})`,
+      `}`,
+    ];
+  }
+
+  _getSnippet() {
+    return this._pick([
+      () => this._jsSnippet(),
+      () => this._pySnippet(),
+      () => this._jsObjectSnippet(),
+      () => this._rustSnippet(),
+    ])();
+  }
+
+  _simpleLines() {
+    const [v1, v2, v3] = this._pickN(this.varNames, 3);
+    const [s1, s2] = this._pickN(this.strLiterals, 2);
+    return [
+      `const ${v1} = "${s1}";`,
+      `let ${v2} = ${this._randInt(1, 50)};`,
+      `const ${v3} = "${s2}";`,
+    ];
+  }
+
+  // ── Deletion Generators ─────────────────────────────────
+
+  _genDeletion(difficulty) {
+    if (difficulty === 1) {
+      const variant = this._randInt(0, 4);
+
+      if (variant === 0) {
+        const lines = this._getSnippet();
+        const row = this._randInt(0, lines.length - 1);
+        const target = lines.filter((_, i) => i !== row);
+        if (target.length === 0) return null;
+        return {
+          initialBuffer: lines, cursorPos: { row, col: 0 },
+          targetBuffer: target,
+          description: `Delete the entire line`,
+          optimalKeystrokes: ['d', 'd'],
+          category: 'deletion', difficulty: 1
+        };
+      }
+
+      if (variant === 1) {
+        const lines = this._simpleLines();
+        const row = this._randInt(0, lines.length - 1);
+        const words = lines[row].match(/[a-zA-Z_]\w*/g);
+        if (!words || words.length === 0) return null;
+        const word = this._pick(words);
+        const col = lines[row].indexOf(word);
+        const eng = new VimEngine();
+        eng.loadBuffer(lines.map(l => l), { row, col });
+        eng.processKey('d'); eng.processKey('a'); eng.processKey('w');
+        return {
+          initialBuffer: lines, cursorPos: { row, col },
+          targetBuffer: eng.buffer,
+          description: `Delete the word "${word}"`,
+          optimalKeystrokes: ['d', 'a', 'w'],
+          category: 'deletion', difficulty: 1
+        };
+      }
+
+      if (variant === 2) {
+        const lines = this._simpleLines();
+        const row = this._randInt(0, lines.length - 1);
+        const col = this._randInt(1, Math.max(1, Math.floor(lines[row].length / 2)));
+        const target = [...lines];
+        target[row] = lines[row].slice(0, col);
+        return {
+          initialBuffer: lines, cursorPos: { row, col },
+          targetBuffer: target,
+          description: `Delete from cursor to end of line`,
+          optimalKeystrokes: ['D'],
+          category: 'deletion', difficulty: 1
+        };
+      }
+
+      if (variant === 3) {
+        const lines = this._simpleLines();
+        const row = this._randInt(0, lines.length - 1);
+        const col = this._randInt(0, Math.max(0, lines[row].length - 1));
+        const target = [...lines];
+        target[row] = lines[row].slice(0, col) + lines[row].slice(col + 1);
+        return {
+          initialBuffer: lines, cursorPos: { row, col },
+          targetBuffer: target,
+          description: `Delete the character under the cursor`,
+          optimalKeystrokes: ['x'],
+          category: 'deletion', difficulty: 1
+        };
+      }
+
+      {
+        const lines = this._simpleLines();
+        const row = this._randInt(0, lines.length - 1);
+        const line = lines[row];
+        const m = line.match(/[a-zA-Z_]\w*/);
+        if (!m) return null;
+        const col = m.index;
+        const eng = new VimEngine();
+        eng.loadBuffer(lines.map(l => l), { row, col });
+        eng.processKey('d');
+        eng.processKey('w');
+        return {
+          initialBuffer: lines, cursorPos: { row, col },
+          targetBuffer: eng.buffer,
+          description: `Delete from cursor to the start of the next word`,
+          optimalKeystrokes: ['d', 'w'],
+          category: 'deletion', difficulty: 1
+        };
+      }
+    }
+
+    if (difficulty === 2) {
+      const variant = this._randInt(0, 3);
+
+      if (variant === 0) {
+        const v = this._pick(this.varNames);
+        const s = this._pick(this.strLiterals);
+        const line = `const ${v} = "${s}";`;
+        const qStart = line.indexOf('"');
+        const col = qStart + 1;
+        const target = [line.slice(0, qStart + 1) + line.slice(line.lastIndexOf('"'))];
+        return {
+          initialBuffer: [line], cursorPos: { row: 0, col },
+          targetBuffer: target,
+          description: `Delete inside the double quotes`,
+          optimalKeystrokes: ['d', 'i', '"'],
+          category: 'deletion', difficulty: 2
+        };
+      }
+
+      if (variant === 1) {
+        const fn = this._pick(this.funcNames);
+        const [p1, p2] = this._pickN(this.varNames, 2);
+        const line = `${fn}(${p1}, ${p2})`;
+        const openP = line.indexOf('(');
+        const col = openP + 1;
+        const target = [`${fn}()`];
+        return {
+          initialBuffer: [line], cursorPos: { row: 0, col },
+          targetBuffer: target,
+          description: `Delete inside the parentheses`,
+          optimalKeystrokes: ['d', 'i', '('],
+          category: 'deletion', difficulty: 2
+        };
+      }
+
+      if (variant === 2) {
+        const fn = this._pick(this.funcNames);
+        const [p1, p2] = this._pickN(this.varNames, 2);
+        const s = this._pick(this.strLiterals);
+        const line = `${fn}(${p1}, "${s}", ${p2})`;
+        const closeIdx = line.lastIndexOf(')');
+        const col = this._randInt(line.indexOf('(') + 1, closeIdx - 1);
+        const target = [line.slice(0, col) + line.slice(closeIdx)];
+        return {
+          initialBuffer: [line], cursorPos: { row: 0, col },
+          targetBuffer: target,
+          description: `Delete from cursor to the closing parenthesis`,
+          optimalKeystrokes: ['d', 't', ')'],
+          category: 'deletion', difficulty: 2
+        };
+      }
+
+      {
+        const lines = this._getSnippet();
+        if (lines.length < 3) return null;
+        const count = this._randInt(2, Math.min(3, lines.length));
+        const row = this._randInt(0, lines.length - count);
+        const target = [...lines.slice(0, row), ...lines.slice(row + count)];
+        if (target.length === 0) return null;
+        const ks = count === 1 ? ['d', 'd'] : [...String(count).split(''), 'd', 'd'];
+        return {
+          initialBuffer: lines, cursorPos: { row, col: 0 },
+          targetBuffer: target,
+          description: `Delete ${count} lines`,
+          optimalKeystrokes: ks,
+          category: 'deletion', difficulty: 2
+        };
+      }
+    }
+
+    {
+      const variant = this._randInt(0, 1);
+
+      if (variant === 0) {
+        const fn = this._pick(this.funcNames);
+        const [k1, k2] = this._pickN(this.varNames, 2);
+        const s = this._pick(this.strLiterals);
+        const line = `${fn}({${k1}: "${s}", ${k2}: true});`;
+        const openB = line.indexOf('{');
+        const closeB = line.indexOf('}');
+        const target = [line.slice(0, openB + 1) + line.slice(closeB)];
+        return {
+          initialBuffer: [line], cursorPos: { row: 0, col: openB + 1 },
+          targetBuffer: target,
+          description: `Delete inside the curly braces`,
+          optimalKeystrokes: ['d', 'i', '{'],
+          category: 'deletion', difficulty: 3
+        };
+      }
+
+      {
+        const fn = this._pick(this.funcNames);
+        const [p1, p2] = this._pickN(this.varNames, 2);
+        const line = `${fn}(${p1}, ${p2});`;
+        const target = [`${fn};`];
+        const col = line.indexOf('(');
+        return {
+          initialBuffer: [line], cursorPos: { row: 0, col },
+          targetBuffer: target,
+          description: `Delete around the parentheses (including the parens themselves)`,
+          optimalKeystrokes: ['d', 'a', '('],
+          category: 'deletion', difficulty: 3
+        };
+      }
+    }
+  }
+
+  // ── Change Generators ───────────────────────────────────
+
+  _genChange(difficulty) {
+    if (difficulty === 1) {
+      const variant = this._randInt(0, 2);
+
+      if (variant === 0) {
+        const lines = this._simpleLines();
+        const row = this._randInt(0, lines.length - 1);
+        const words = lines[row].match(/[a-zA-Z_]\w*/g);
+        if (!words || words.length === 0) return null;
+        const word = this._pick(words);
+        const col = lines[row].indexOf(word);
+        const newWord = this._pick(this.varNames.filter(v => v !== word));
+        const target = [...lines];
+        target[row] = lines[row].slice(0, col) + newWord + lines[row].slice(col + word.length);
+        return {
+          initialBuffer: lines, cursorPos: { row, col },
+          targetBuffer: target,
+          description: `Change "${word}" to "${newWord}"`,
+          optimalKeystrokes: ['c', 'i', 'w', ...newWord.split(''), 'j', 'k'],
+          category: 'change', difficulty: 1
+        };
+      }
+
+      if (variant === 1) {
+        const lines = this._simpleLines();
+        const row = this._randInt(0, lines.length - 1);
+        const col = this._randInt(1, Math.max(1, Math.floor(lines[row].length / 2)));
+        const newText = this._pick(this.strLiterals);
+        const target = [...lines];
+        target[row] = lines[row].slice(0, col) + newText;
+        return {
+          initialBuffer: lines, cursorPos: { row, col },
+          targetBuffer: target,
+          description: `Change from cursor to end of line to "${newText}"`,
+          optimalKeystrokes: ['C', ...newText.split(''), 'j', 'k'],
+          category: 'change', difficulty: 1
+        };
+      }
+
+      {
+        const lines = this._simpleLines();
+        const row = this._randInt(0, lines.length - 1);
+        const indent = lines[row].match(/^(\s*)/)[1];
+        const newText = this._pick(this.strLiterals);
+        const target = [...lines];
+        target[row] = indent + `return "${newText}";`;
+        return {
+          initialBuffer: lines, cursorPos: { row, col: indent.length },
+          targetBuffer: target,
+          description: `Change the entire line content`,
+          optimalKeystrokes: ['c', 'c', ...`return "${newText}";`.split(''), 'j', 'k'],
+          category: 'change', difficulty: 1
+        };
+      }
+    }
+
+    if (difficulty === 2) {
+      const variant = this._randInt(0, 1);
+
+      if (variant === 0) {
+        const v = this._pick(this.varNames);
+        const oldStr = this._pick(this.strLiterals);
+        const newStr = this._pick(this.strLiterals.filter(s => s !== oldStr));
+        const line = `const ${v} = "${oldStr}";`;
+        const target = [`const ${v} = "${newStr}";`];
+        const col = line.indexOf(oldStr);
+        return {
+          initialBuffer: [line], cursorPos: { row: 0, col },
+          targetBuffer: target,
+          description: `Change the string inside quotes to "${newStr}"`,
+          optimalKeystrokes: ['c', 'i', '"', ...newStr.split(''), 'j', 'k'],
+          category: 'change', difficulty: 2
+        };
+      }
+
+      {
+        const fn = this._pick(this.funcNames);
+        const [p1, p2] = this._pickN(this.varNames, 2);
+        const [np1, np2] = this._pickN(this.varNames.filter(v => v !== p1 && v !== p2), 2);
+        const line = `${fn}(${p1}, ${p2})`;
+        const target = [`${fn}(${np1}, ${np2})`];
+        const col = line.indexOf(p1);
+        const newInner = `${np1}, ${np2}`;
+        return {
+          initialBuffer: [line], cursorPos: { row: 0, col },
+          targetBuffer: target,
+          description: `Change the function arguments to "${newInner}"`,
+          optimalKeystrokes: ['c', 'i', '(', ...newInner.split(''), 'j', 'k'],
+          category: 'change', difficulty: 2
+        };
+      }
+    }
+
+    {
+      const [v1, v2] = this._pickN(this.varNames, 2);
+      const oldStr = this._pick(this.strLiterals);
+      const newStr = this._pick(this.strLiterals.filter(s => s !== oldStr));
+      const lines = [
+        `const ${v1} = {`,
+        `  ${v2}: "${oldStr}",`,
+        `};`,
+      ];
+      const target = [
+        `const ${v1} = {`,
+        `  ${v2}: "${newStr}",`,
+        `};`,
+      ];
+      const col = lines[1].indexOf(oldStr);
+      return {
+        initialBuffer: lines, cursorPos: { row: 1, col },
+        targetBuffer: target,
+        description: `Change the string "${oldStr}" to "${newStr}"`,
+        optimalKeystrokes: ['c', 'i', '"', ...newStr.split(''), 'j', 'k'],
+        category: 'change', difficulty: 3
+      };
+    }
+  }
+
+  // ── Insert Generators ───────────────────────────────────
+
+  _genInsert(difficulty) {
+    const variant = this._randInt(0, 3);
+
+    if (variant === 0) {
+      const lines = this._simpleLines();
+      const row = this._randInt(0, lines.length - 1);
+      const append = ' // ' + this._pick(this.strLiterals);
+      const target = [...lines];
+      target[row] = lines[row] + append;
+      return {
+        initialBuffer: lines, cursorPos: { row, col: 0 },
+        targetBuffer: target,
+        description: `Append "${append.trim()}" at the end of the line`,
+        optimalKeystrokes: ['A', ...append.split(''), 'j', 'k'],
+        category: 'insert', difficulty: 1
+      };
+    }
+
+    if (variant === 1) {
+      const lines = this._simpleLines();
+      const row = this._randInt(0, lines.length - 1);
+      const target = [...lines];
+      const content = `// ${this._pick(this.strLiterals)}`;
+      target[row] = content + lines[row];
+      return {
+        initialBuffer: lines, cursorPos: { row, col: lines[row].length - 1 },
+        targetBuffer: target,
+        description: `Insert "${content}" at the beginning of the line`,
+        optimalKeystrokes: ['I', ...content.split(''), 'j', 'k'],
+        category: 'insert', difficulty: 1
+      };
+    }
+
+    if (variant === 2) {
+      const lines = this._simpleLines();
+      const row = this._randInt(0, lines.length - 1);
+      const newLine = `const ${this._pick(this.varNames)} = ${this._randInt(1, 100)};`;
+      const target = [...lines];
+      target.splice(row + 1, 0, newLine);
+      return {
+        initialBuffer: lines, cursorPos: { row, col: 0 },
+        targetBuffer: target,
+        description: `Add a new line below with "${newLine}"`,
+        optimalKeystrokes: ['o', ...newLine.split(''), 'j', 'k'],
+        category: 'insert', difficulty: 1
+      };
+    }
+
+    {
+      const lines = this._simpleLines();
+      const row = this._randInt(0, lines.length - 1);
+      const newLine = `// ${this._pick(this.strLiterals)}`;
+      const target = [...lines];
+      target.splice(row, 0, newLine);
+      return {
+        initialBuffer: lines, cursorPos: { row, col: 0 },
+        targetBuffer: target,
+        description: `Add a new line above with "${newLine}"`,
+        optimalKeystrokes: ['O', ...newLine.split(''), 'j', 'k'],
+        category: 'insert', difficulty: 1
+      };
+    }
+  }
+
+  // ── Navigation Generators ───────────────────────────────
+
+  _genNavigation(difficulty) {
+    if (difficulty <= 1) {
+      const variant = this._randInt(0, 2);
+
+      if (variant === 0) {
+        const lines = this._getSnippet();
+        const row = this._randInt(0, lines.length - 1);
+        const col = this._randInt(1, Math.max(1, lines[row].length - 1));
+        return {
+          initialBuffer: lines, cursorPos: { row, col },
+          targetBuffer: lines,
+          targetCursorPos: { row, col: 0 },
+          description: `Move to the beginning of the line`,
+          optimalKeystrokes: ['0'],
+          category: 'navigation', difficulty: 1
+        };
+      }
+
+      if (variant === 1) {
+        const lines = this._getSnippet();
+        const row = this._randInt(0, lines.length - 1);
+        const endCol = Math.max(0, lines[row].length - 1);
+        return {
+          initialBuffer: lines, cursorPos: { row, col: 0 },
+          targetBuffer: lines,
+          targetCursorPos: { row, col: endCol },
+          description: `Move to the end of the line`,
+          optimalKeystrokes: ['$'],
+          category: 'navigation', difficulty: 1
+        };
+      }
+
+      {
+        const lines = this._getSnippet();
+        const row = this._randInt(0, lines.length - 1);
+        const fnb = lines[row].match(/\S/);
+        const fnbCol = fnb ? lines[row].indexOf(fnb[0]) : 0;
+        const startCol = this._randInt(0, Math.max(0, lines[row].length - 1));
+        return {
+          initialBuffer: lines, cursorPos: { row, col: startCol },
+          targetBuffer: lines,
+          targetCursorPos: { row, col: fnbCol },
+          description: `Move to the first non-blank character`,
+          optimalKeystrokes: ['^'],
+          category: 'navigation', difficulty: 1
+        };
+      }
+    }
+
+    if (difficulty === 2) {
+      const variant = this._randInt(0, 1);
+
+      if (variant === 0) {
+        const lines = this._getSnippet();
+        const row = 0;
+        const targetRow = this._randInt(2, lines.length - 1);
+        const line = lines[targetRow];
+        const chars = [...new Set(line.split('').filter(c => /[^\s\w]/.test(c)))];
+        if (chars.length === 0) return null;
+        const ch = this._pick(chars);
+        const targetCol = line.indexOf(ch);
+        if (targetCol === -1) return null;
+        const ks = targetRow === 0 ? [] : [...String(targetRow).split(''), 'j'];
+        ks.push('f', ch);
+        return {
+          initialBuffer: lines, cursorPos: { row, col: 0 },
+          targetBuffer: lines,
+          targetCursorPos: { row: targetRow, col: targetCol },
+          description: `Navigate to the "${ch}" on line ${targetRow + 1}`,
+          optimalKeystrokes: ks,
+          category: 'navigation', difficulty: 2
+        };
+      }
+
+      {
+        const lines = this._getSnippet();
+        if (lines.length < 3) return null;
+        const targetRow = lines.length - 1;
+        return {
+          initialBuffer: lines, cursorPos: { row: 0, col: 0 },
+          targetBuffer: lines,
+          targetCursorPos: { row: targetRow, col: lines[targetRow].match(/\S/) ? lines[targetRow].indexOf(lines[targetRow].match(/\S/)[0]) : 0 },
+          description: `Move to the last line of the file`,
+          optimalKeystrokes: ['G'],
+          category: 'navigation', difficulty: 2
+        };
+      }
+    }
+
+    {
+      const lines = this._getSnippet();
+      if (lines.length < 4) return null;
+      const targetRow = this._randInt(2, lines.length - 1);
+      const fnb = lines[targetRow].match(/\S/) ? lines[targetRow].indexOf(lines[targetRow].match(/\S/)[0]) : 0;
+      return {
+        initialBuffer: lines, cursorPos: { row: 0, col: 0 },
+        targetBuffer: lines,
+        targetCursorPos: { row: targetRow, col: fnb },
+        description: `Jump to line ${targetRow + 1}`,
+        optimalKeystrokes: [...String(targetRow + 1).split(''), 'G'],
+        category: 'navigation', difficulty: 3
+      };
+    }
+  }
+
+  // ── Yank/Paste Generators ───────────────────────────────
+
+  _genYank(difficulty) {
+    const variant = this._randInt(0, 2);
+
+    if (variant === 0) {
+      const lines = this._simpleLines();
+      const row = this._randInt(0, lines.length - 1);
+      const target = [...lines];
+      target.splice(row + 1, 0, lines[row]);
+      return {
+        initialBuffer: lines, cursorPos: { row, col: 0 },
+        targetBuffer: target,
+        description: `Duplicate the current line below`,
+        optimalKeystrokes: ['y', 'y', 'p'],
+        category: 'yank', difficulty: 1
+      };
+    }
+
+    if (variant === 1) {
+      const lines = this._simpleLines();
+      if (lines.length < 2) return null;
+      const row = this._randInt(0, lines.length - 2);
+      const target = [...lines];
+      const moved = target.splice(row, 1)[0];
+      target.splice(row + 1, 0, moved);
+      return {
+        initialBuffer: lines, cursorPos: { row, col: 0 },
+        targetBuffer: target,
+        description: `Move this line down one line`,
+        optimalKeystrokes: ['Alt-j'],
+        category: 'yank', difficulty: 1
+      };
+    }
+
+    {
+      const lines = this._simpleLines();
+      if (lines.length < 2) return null;
+      const row = this._randInt(1, lines.length - 1);
+      const target = [...lines];
+      const moved = target.splice(row, 1)[0];
+      target.splice(row - 1, 0, moved);
+      return {
+        initialBuffer: lines, cursorPos: { row, col: 0 },
+        targetBuffer: target,
+        description: `Move this line up one line`,
+        optimalKeystrokes: ['Alt-k'],
+        category: 'yank', difficulty: 1
+      };
+    }
+  }
+
+  // ── Visual Mode Generators ──────────────────────────────
+
+  _genVisual(difficulty) {
+    const variant = this._randInt(0, 2);
+
+    if (variant === 0) {
+      const lines = this._getSnippet();
+      const row = this._randInt(0, lines.length - 1);
+      const target = [...lines];
+      target[row] = '  ' + lines[row];
+      return {
+        initialBuffer: lines, cursorPos: { row, col: 0 },
+        targetBuffer: target,
+        description: `Indent the current line`,
+        optimalKeystrokes: ['>', '>'],
+        category: 'visual', difficulty: 1
+      };
+    }
+
+    if (variant === 1) {
+      const lines = this._getSnippet();
+      if (lines.length < 3) return null;
+      const startRow = this._randInt(0, lines.length - 2);
+      const count = this._randInt(1, Math.min(2, lines.length - 1 - startRow));
+      const target = [...lines];
+      for (let r = startRow; r <= startRow + count; r++) {
+        target[r] = '  ' + lines[r];
+      }
+      return {
+        initialBuffer: lines, cursorPos: { row: startRow, col: 0 },
+        targetBuffer: target,
+        description: `Indent ${count + 1} lines`,
+        optimalKeystrokes: count === 1 ? ['>', 'j'] : ['>', String(count), 'j'],
+        category: 'visual', difficulty: 2
+      };
+    }
+
+    {
+      const lines = this._getSnippet();
+      if (lines.length < 2) return null;
+      const row = this._randInt(0, lines.length - 1);
+      const line = lines[row];
+      const words = line.match(/[a-zA-Z_]\w*/g);
+      if (!words || words.length === 0) return null;
+      const word = words[0];
+      const col = line.indexOf(word);
+      const endCol = col + word.length - 1;
+      const target = [...lines];
+      target[row] = line.slice(0, col) + line.slice(col + word.length);
+      return {
+        initialBuffer: lines, cursorPos: { row, col },
+        targetBuffer: target,
+        description: `Visually select "${word}" and delete it`,
+        optimalKeystrokes: ['v', 'e', 'd'],
+        category: 'visual', difficulty: 2
+      };
+    }
+  }
+
+  // ── Compound Generators ─────────────────────────────────
+
+  _genCompound(difficulty) {
+    const variant = this._randInt(0, 4);
+
+    if (variant === 0) {
+      const lines = this._simpleLines();
+      const row = this._randInt(0, lines.length - 1);
+      const line = lines[row];
+      const col = this._randInt(0, Math.max(0, line.length - 1));
+      const ch = line[col];
+      const chars = 'abcdefghijlmnopqrstuvwxyz0123456789';
+      const newCh = chars[this._randInt(0, chars.length - 1)];
+      const target = [...lines];
+      target[row] = line.slice(0, col) + newCh + line.slice(col + 1);
+      return {
+        initialBuffer: lines, cursorPos: { row, col },
+        targetBuffer: target,
+        description: `Replace the character "${ch}" with "${newCh}"`,
+        optimalKeystrokes: ['r', newCh],
+        category: 'compound', difficulty: 1
+      };
+    }
+
+    if (variant === 1) {
+      const lines = this._simpleLines();
+      if (lines.length < 2) return null;
+      const row = this._randInt(0, lines.length - 2);
+      const target = [...lines];
+      const curLine = target[row];
+      const nextLine = target[row + 1].trimStart();
+      target[row] = curLine + (nextLine ? ' ' + nextLine : '');
+      target.splice(row + 1, 1);
+      return {
+        initialBuffer: lines, cursorPos: { row, col: 0 },
+        targetBuffer: target,
+        description: `Join the current line with the line below`,
+        optimalKeystrokes: ['J'],
+        category: 'compound', difficulty: 1
+      };
+    }
+
+    if (variant === 2) {
+      const v = this._pick(this.varNames);
+      const oldWord = this._pick(this.strLiterals);
+      const newWord = this._pick(this.strLiterals.filter(s => s !== oldWord));
+      const line = `const ${v} = "${oldWord}" + "${oldWord}";`;
+      const target = [line.split(oldWord).join(newWord)];
+      return {
+        initialBuffer: [line], cursorPos: { row: 0, col: 0 },
+        targetBuffer: target,
+        description: `Replace all "${oldWord}" with "${newWord}" on this line`,
+        optimalKeystrokes: [';', ...'s/'.split(''), ...oldWord.split(''), '/', ...newWord.split(''), '/', 'g', 'Enter'],
+        category: 'compound', difficulty: 2
+      };
+    }
+
+    if (variant === 3) {
+      const lines = this._getSnippet();
+      if (lines.length < 2) return null;
+      const row = this._randInt(0, lines.length - 1);
+      const target = [...lines];
+      target[row] = lines[row].replace(/^  /, '');
+      if (target[row] === lines[row]) return null;
+      return {
+        initialBuffer: lines, cursorPos: { row, col: 0 },
+        targetBuffer: target,
+        description: `Dedent the current line`,
+        optimalKeystrokes: ['<', '<'],
+        category: 'compound', difficulty: 1
+      };
+    }
+
+    {
+      const lines = this._simpleLines();
+      if (lines.length < 2) return null;
+      const row = 0;
+      const line = lines[row];
+      const target = [...lines];
+      target.splice(row, 2);
+      if (target.length === 0) return null;
+      return {
+        initialBuffer: lines, cursorPos: { row: 0, col: 0 },
+        targetBuffer: target,
+        description: `Delete two lines using dd and dot repeat`,
+        optimalKeystrokes: ['d', 'd', '.'],
+        category: 'compound', difficulty: 2
+      };
+    }
+  }
+
+  _fallback(category) {
+    const line = `const value = "hello";`;
+    return {
+      initialBuffer: [line],
+      cursorPos: { row: 0, col: 6 },
+      targetBuffer: [`const  = "hello";`],
+      description: `Delete the word "value"`,
+      optimalKeystrokes: ['d', 'i', 'w'],
+      category: category || 'deletion',
+      difficulty: 1
+    };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// STATS MANAGER
+// ══════════════════════════════════════════════════════════════
+
+class StatsManager {
+  constructor() {
+    this.data = this._load();
+  }
+
+  _load() {
+    try {
+      const raw = localStorage.getItem('vim-golf:data');
+      if (raw) {
+        const d = JSON.parse(raw);
+        if (d.version === 1) return d;
+      }
+    } catch (e) {}
+    return {
+      version: 1,
+      sessions: [],
+      categoryStats: {},
+      streak: { current: 0, best: 0, lastDate: null },
+      settings: { preferredMode: null }
+    };
+  }
+
+  save() {
+    try {
+      localStorage.setItem('vim-golf:data', JSON.stringify(this.data));
+    } catch (e) {}
+  }
+
+  recordProblem(result) {
+    const cat = result.category;
+    if (!this.data.categoryStats[cat]) {
+      this.data.categoryStats[cat] = { attempts: 0, optimalCount: 0, totalKeystrokes: 0, totalOptimal: 0 };
+    }
+    const cs = this.data.categoryStats[cat];
+    cs.attempts++;
+    cs.totalKeystrokes += result.keystrokes;
+    cs.totalOptimal += result.optimal;
+    if (result.keystrokes <= result.optimal) cs.optimalCount++;
+  }
+
+  endSession(session) {
+    this.data.sessions.push(session);
+    if (this.data.sessions.length > 100) this.data.sessions = this.data.sessions.slice(-100);
+    this._updateStreak();
+    this.save();
+  }
+
+  _updateStreak() {
+    const today = new Date().toISOString().slice(0, 10);
+    const last = this.data.streak.lastDate;
+    if (last === today) return;
+
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    if (last === yesterday) {
+      this.data.streak.current++;
+    } else {
+      this.data.streak.current = 1;
+    }
+    this.data.streak.lastDate = today;
+    this.data.streak.best = Math.max(this.data.streak.best, this.data.streak.current);
+  }
+
+  getCategoryWeights() {
+    const weights = {};
+    const cats = ['deletion', 'change', 'insert', 'navigation', 'yank', 'visual', 'compound'];
+    for (const cat of cats) {
+      const cs = this.data.categoryStats[cat];
+      if (!cs || cs.attempts === 0) {
+        weights[cat] = 1.5;
+      } else {
+        const eff = cs.totalOptimal / Math.max(1, cs.totalKeystrokes);
+        weights[cat] = 1 / (eff + 0.1);
+      }
+    }
+    return weights;
+  }
+
+  getOverview() {
+    const cs = this.data.categoryStats;
+    let totalProblems = 0, totalOptimal = 0;
+    for (const cat in cs) {
+      totalProblems += cs[cat].attempts;
+      totalOptimal += cs[cat].optimalCount;
+    }
+    const recentSessions = this.data.sessions.slice(-7);
+    const avgEff = recentSessions.length > 0
+      ? recentSessions.reduce((s, ses) => s + (ses.avgEfficiency || 0), 0) / recentSessions.length
+      : 0;
+    return {
+      totalProblems,
+      totalOptimal,
+      streak: this.data.streak,
+      recentEfficiency: avgEff,
+      categoryStats: cs,
+      sessions: recentSessions
+    };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// UI RENDERER
+// ══════════════════════════════════════════════════════════════
+
+class UIRenderer {
+  constructor() {
+    this.screens = {
+      start: document.getElementById('screen-start'),
+      game: document.getElementById('screen-game'),
+      feedback: document.getElementById('screen-feedback'),
+      results: document.getElementById('screen-results'),
+      stats: document.getElementById('screen-stats'),
+    };
+    this.els = {
+      editor: document.getElementById('editor'),
+      targetEditor: document.getElementById('target-editor'),
+      modeIndicator: document.getElementById('mode-indicator'),
+      keystrokeBar: document.getElementById('keystroke-bar'),
+      problemDesc: document.getElementById('problem-desc'),
+      gameModeLabel: document.getElementById('game-mode-label'),
+      gameTimer: document.getElementById('game-timer'),
+      gameCounter: document.getElementById('game-counter'),
+      commandLine: document.getElementById('command-line'),
+      commandText: document.getElementById('command-text'),
+      streakDisplay: document.getElementById('streak-display'),
+    };
+  }
+
+  showScreen(name) {
+    for (const key in this.screens) {
+      this.screens[key].classList.toggle('active', key === name);
+    }
+  }
+
+  renderGame(engine, problem, keystrokes, timerText, counterText, modeLabel) {
+    this.els.gameModeLabel.textContent = modeLabel;
+    this.els.gameTimer.textContent = timerText;
+    this.els.gameCounter.textContent = counterText;
+    this.els.problemDesc.textContent = problem.description;
+
+    this._renderBuffer(this.els.editor, engine.buffer, engine.cursor, engine.getVisualSelection());
+    this._renderTarget(this.els.targetEditor, problem.targetBuffer, engine.buffer);
+
+    const mode = engine.mode;
+    this.els.modeIndicator.textContent = mode;
+    this.els.modeIndicator.className = '';
+    if (mode === 'INSERT') this.els.modeIndicator.classList.add('insert');
+    else if (mode === 'VISUAL' || mode === 'VISUAL_LINE') this.els.modeIndicator.classList.add('visual');
+    else if (mode === 'COMMAND') this.els.modeIndicator.classList.add('command');
+
+    this._renderKeystrokes(keystrokes);
+
+    if (mode === 'COMMAND') {
+      this.els.commandLine.classList.remove('hidden');
+      this.els.commandText.textContent = engine.commandBuffer;
+    } else {
+      this.els.commandLine.classList.add('hidden');
+    }
+  }
+
+  _renderBuffer(container, buffer, cursor, visualRange) {
+    let html = '';
+    for (let row = 0; row < buffer.length; row++) {
+      const line = buffer[row];
+      const lineNum = `<span class="line-num">${String(row + 1).padStart(2)}</span>`;
+      let chars = '';
+
+      const highlighted = this._syntaxHighlight(line);
+
+      for (let col = 0; col <= line.length; col++) {
+        const ch = col < line.length ? this._escHtml(line[col]) : ' ';
+        const cls = [];
+        if (cursor && row === cursor.row && col === cursor.col) cls.push('char-cursor');
+        if (visualRange && this._isInVisual(row, col, visualRange) && col < line.length) cls.push('char-visual');
+
+        if (cls.length > 0) {
+          chars += `<span class="${cls.join(' ')}">${ch}</span>`;
+        } else if (col < line.length) {
+          chars += highlighted[col] || ch;
+        } else if (cursor && row === cursor.row && col === cursor.col) {
+          chars += `<span class="char-cursor"> </span>`;
+        }
+      }
+
+      html += `<span class="editor-line">${lineNum}${chars}</span>\n`;
+    }
+    container.innerHTML = html;
+  }
+
+  _syntaxHighlight(line) {
+    const result = {};
+    const rules = [
+      { re: /\b(function|const|let|var|return|if|else|for|while|class|import|export|from|def|fn|pub|struct|impl|match|async|await|new|true|false|null|None|self|this)\b/g, cls: 'syn-kw' },
+      { re: /(["'`])(?:(?!\1|\\).|\\.)*\1/g, cls: 'syn-str' },
+      { re: /\/\/.*/g, cls: 'syn-comment' },
+      { re: /#.*/g, cls: 'syn-comment' },
+      { re: /\b\d+\b/g, cls: 'syn-num' },
+    ];
+
+    const used = new Set();
+    for (const rule of rules) {
+      let m;
+      rule.re.lastIndex = 0;
+      while ((m = rule.re.exec(line)) !== null) {
+        let skip = false;
+        for (let i = m.index; i < m.index + m[0].length; i++) {
+          if (used.has(i)) { skip = true; break; }
+        }
+        if (skip) continue;
+        for (let i = m.index; i < m.index + m[0].length; i++) {
+          used.add(i);
+          result[i] = `<span class="${rule.cls}">${this._escHtml(line[i])}</span>`;
+        }
+      }
+    }
+    return result;
+  }
+
+  _renderTarget(container, targetBuffer, currentBuffer) {
+    let html = '';
+    const maxLines = Math.max(targetBuffer.length, currentBuffer.length);
+    for (let row = 0; row < maxLines; row++) {
+      const tLine = row < targetBuffer.length ? targetBuffer[row] : null;
+      const cLine = row < currentBuffer.length ? currentBuffer[row] : null;
+      const lineNum = `<span class="line-num">${String(row + 1).padStart(2)}</span>`;
+
+      let cls = 'editor-line';
+      let displayLine;
+
+      if (tLine === null) {
+        cls += ' target-line-removed';
+        displayLine = this._escHtml(cLine);
+      } else if (cLine === null) {
+        cls += ' target-line-added';
+        displayLine = this._escHtml(tLine);
+      } else if (tLine !== cLine) {
+        cls += ' target-line-diff';
+        displayLine = this._escHtml(tLine);
+      } else {
+        displayLine = this._escHtml(tLine);
+      }
+
+      html += `<span class="${cls}">${lineNum}${displayLine}</span>\n`;
+    }
+    container.innerHTML = html;
+  }
+
+  _renderKeystrokes(keystrokes) {
+    this.els.keystrokeBar.innerHTML = keystrokes
+      .map(k => `<span class="key-chip">${this._escHtml(this._keyDisplay(k))}</span>`)
+      .join('');
+  }
+
+  _keyDisplay(key) {
+    switch (key) {
+      case 'Escape': return 'Esc';
+      case 'Enter': return 'Ret';
+      case 'Backspace': return 'Bksp';
+      case ' ': return 'Spc';
+      case 'Tab': return 'Tab';
+      default:
+        if (key.startsWith('Alt-')) return `A-${key.slice(4)}`;
+        if (key.startsWith('Ctrl-')) return `C-${key.slice(5)}`;
+        return key;
+    }
+  }
+
+  _isInVisual(row, col, range) {
+    if (!range) return false;
+    if (range.linewise) {
+      return row >= range.start.row && row <= range.end.row;
+    }
+    const pos = row * 100000 + col;
+    const start = range.start.row * 100000 + range.start.col;
+    const end = range.end.row * 100000 + range.end.col;
+    return pos >= start && pos <= end;
+  }
+
+  _escHtml(s) {
+    if (!s) return '';
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  renderFeedback(problem, userKeys, timeMs) {
+    const optimal = problem.optimalKeystrokes;
+    const userCount = userKeys.length;
+    const optimalCount = optimal.length;
+    const efficiency = Math.round((optimalCount / Math.max(1, userCount)) * 100);
+    const timeSec = (timeMs / 1000).toFixed(1);
+
+    let badgeCls, badgeText;
+    if (userCount <= optimalCount) {
+      badgeCls = 'badge-optimal'; badgeText = 'Optimal';
+    } else if (userCount <= optimalCount + 2) {
+      badgeCls = 'badge-close'; badgeText = 'Close';
+    } else {
+      badgeCls = 'badge-inefficient'; badgeText = 'Inefficient';
+    }
+
+    this.screens.feedback.innerHTML = `
+      <div class="fade-in" style="display:flex;flex-direction:column;align-items:center;gap:28px;">
+        <div class="feedback-badge ${badgeCls}">${badgeText}</div>
+        <div class="feedback-stats">
+          <div><span class="feedback-stat-val">${userCount}</span> your keys</div>
+          <div><span class="feedback-stat-val">${optimalCount}</span> optimal</div>
+          <div><span class="feedback-stat-val">${efficiency}%</span> efficiency</div>
+          <div><span class="feedback-stat-val">${timeSec}s</span> time</div>
+        </div>
+        <div class="feedback-comparison">
+          <div class="feedback-col">
+            <div class="feedback-col-title">Your keystrokes</div>
+            <div class="feedback-keys">${userKeys.map(k => `<span class="key-chip">${this._escHtml(this._keyDisplay(k))}</span>`).join('')}</div>
+          </div>
+          <div class="feedback-col">
+            <div class="feedback-col-title">Optimal solution</div>
+            <div class="feedback-keys">${optimal.map(k => `<span class="key-chip" style="color:var(--correct)">${this._escHtml(this._keyDisplay(k))}</span>`).join('')}</div>
+          </div>
+        </div>
+        <div class="feedback-next">press any key to continue</div>
+      </div>
+    `;
+  }
+
+  renderResults(session) {
+    const avgEff = Math.round(session.avgEfficiency * 100);
+    const avgTime = (session.avgTime / 1000).toFixed(1);
+    const optimalPct = Math.round((session.optimalCount / Math.max(1, session.problemsCompleted)) * 100);
+
+    let catHtml = '';
+    if (session.categoryBreakdown) {
+      for (const [cat, stats] of Object.entries(session.categoryBreakdown)) {
+        const eff = Math.round((stats.totalOptimal / Math.max(1, stats.totalKeystrokes)) * 100);
+        catHtml += `
+          <div class="results-cat-row">
+            <span class="results-cat-name">${cat}</span>
+            <div class="results-cat-bar-bg"><div class="results-cat-bar-fill" style="width:${eff}%"></div></div>
+            <span class="results-cat-pct">${eff}%</span>
+          </div>`;
+      }
+    }
+
+    let worstHtml = '';
+    if (session.worstCategory) {
+      worstHtml = `<div class="results-worst">Weakest area: <strong>${session.worstCategory}</strong></div>`;
+    }
+
+    this.screens.results.innerHTML = `
+      <div class="fade-in" style="display:flex;flex-direction:column;align-items:center;gap:32px;">
+        <div class="results-title">Session Complete</div>
+        <div class="results-grid">
+          <div><div class="results-stat-val">${session.problemsCompleted}</div><div class="results-stat-label">Problems</div></div>
+          <div><div class="results-stat-val">${avgEff}%</div><div class="results-stat-label">Efficiency</div></div>
+          <div><div class="results-stat-val">${avgTime}s</div><div class="results-stat-label">Avg Time</div></div>
+          <div><div class="results-stat-val">${optimalPct}%</div><div class="results-stat-label">Optimal</div></div>
+          <div><div class="results-stat-val">${session.totalKeystrokes}</div><div class="results-stat-label">Keystrokes</div></div>
+          <div><div class="results-stat-val">${session.streak}</div><div class="results-stat-label">Streak</div></div>
+        </div>
+        ${catHtml ? `<div class="results-categories"><div class="results-cat-title">Category Breakdown</div>${catHtml}</div>` : ''}
+        ${worstHtml}
+        <button class="btn-primary" id="btn-play-again">Play Again</button>
+      </div>
+    `;
+
+    document.getElementById('btn-play-again').addEventListener('click', () => {
+      this.showScreen('start');
+    });
+  }
+
+  renderStats(overview) {
+    const cs = overview.categoryStats;
+    let catHtml = '';
+    for (const cat of ['deletion','change','insert','navigation','yank','visual','compound']) {
+      const s = cs[cat];
+      if (!s || s.attempts === 0) {
+        catHtml += `
+          <div class="results-cat-row">
+            <span class="results-cat-name">${cat}</span>
+            <div class="results-cat-bar-bg"><div class="results-cat-bar-fill" style="width:0%"></div></div>
+            <span class="results-cat-pct">—</span>
+          </div>`;
+        continue;
+      }
+      const eff = Math.round((s.totalOptimal / Math.max(1, s.totalKeystrokes)) * 100);
+      const optPct = Math.round((s.optimalCount / Math.max(1, s.attempts)) * 100);
+      catHtml += `
+        <div class="results-cat-row">
+          <span class="results-cat-name">${cat}</span>
+          <div class="results-cat-bar-bg"><div class="results-cat-bar-fill" style="width:${eff}%"></div></div>
+          <span class="results-cat-pct">${optPct}%</span>
+        </div>`;
+    }
+
+    this.screens.stats.innerHTML = `
+      <div class="fade-in" style="display:flex;flex-direction:column;gap:28px;">
+        <div class="stats-header">
+          <div class="stats-title">Statistics</div>
+          <button class="link-btn" id="btn-stats-back">back</button>
+        </div>
+        <div class="stats-overview">
+          <div><div class="stats-overview-val">${overview.streak.current}</div><div class="stats-overview-label">Day Streak</div></div>
+          <div><div class="stats-overview-val">${overview.streak.best}</div><div class="stats-overview-label">Best Streak</div></div>
+          <div><div class="stats-overview-val">${overview.totalProblems}</div><div class="stats-overview-label">Total Solved</div></div>
+          <div><div class="stats-overview-val">${Math.round(overview.recentEfficiency * 100)}%</div><div class="stats-overview-label">Recent Eff.</div></div>
+        </div>
+        <div class="stats-mastery">
+          <div class="results-cat-title">Category Mastery (% solved optimally)</div>
+          ${catHtml}
+        </div>
+      </div>
+    `;
+
+    document.getElementById('btn-stats-back').addEventListener('click', () => {
+      this.showScreen('start');
+    });
+  }
+
+  renderStreak(streak) {
+    if (streak.current > 0) {
+      this.els.streakDisplay.textContent = `${streak.current} day streak`;
+    } else {
+      this.els.streakDisplay.textContent = '';
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// APP
+// ══════════════════════════════════════════════════════════════
+
+class App {
+  constructor() {
+    this.engine = new VimEngine();
+    this.generator = new ProblemGenerator();
+    this.renderer = new UIRenderer();
+    this.stats = new StatsManager();
+
+    this.state = 'START';
+    this.sessionMode = null;
+    this.sessionVal = null;
+    this.currentProblem = null;
+    this.userKeystrokes = [];
+    this.problemStartTime = 0;
+    this.sessionProblems = [];
+    this.timerInterval = null;
+    this.timeRemaining = 0;
+    this.problemsRemaining = 0;
+    this.optimalStreak = 0;
+
+    this._bindEvents();
+    this._initStartScreen();
+  }
+
+  _bindEvents() {
+    document.addEventListener('keydown', (e) => this._onKeyDown(e));
+
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode;
+        const val = btn.dataset.val;
+        this._startSession(mode, val);
+      });
+    });
+
+    document.getElementById('btn-stats').addEventListener('click', () => {
+      this.renderer.renderStats(this.stats.getOverview());
+      this.renderer.showScreen('stats');
+    });
+
+    document.getElementById('btn-quit').addEventListener('click', () => {
+      if (this.state === 'PLAYING') this._endSession();
+    });
+  }
+
+  _initStartScreen() {
+    this.renderer.renderStreak(this.stats.data.streak);
+    this.renderer.showScreen('start');
+  }
+
+  _startSession(mode, val) {
+    this.sessionMode = mode;
+    this.sessionVal = val;
+    this.sessionProblems = [];
+    this.optimalStreak = 0;
+    this.state = 'PLAYING';
+
+    if (mode === 'timed') {
+      this.timeRemaining = parseInt(val, 10);
+      this.problemsRemaining = Infinity;
+      this._startTimer();
+    } else if (mode === 'count') {
+      this.problemsRemaining = parseInt(val, 10);
+      this.timeRemaining = Infinity;
+    } else {
+      this.problemsRemaining = Infinity;
+      this.timeRemaining = Infinity;
+    }
+
+    this._nextProblem();
+    this.renderer.showScreen('game');
+  }
+
+  _startTimer() {
+    if (this.timerInterval) clearInterval(this.timerInterval);
+    this.timerInterval = setInterval(() => {
+      this.timeRemaining--;
+      this._renderGame();
+      if (this.timeRemaining <= 0) {
+        clearInterval(this.timerInterval);
+        this.timerInterval = null;
+        this._endSession();
+      }
+    }, 1000);
+  }
+
+  _nextProblem() {
+    let problem;
+    if (this.sessionMode === 'practice') {
+      problem = this.generator.generate(this.sessionVal);
+    } else {
+      const weights = this.stats.getCategoryWeights();
+      problem = this.generator.generateWeighted(weights);
+    }
+
+    this.currentProblem = problem;
+    this.userKeystrokes = [];
+    this.problemStartTime = Date.now();
+    this.engine.loadBuffer(problem.initialBuffer.map(l => l), { ...problem.cursorPos });
+    this._renderGame();
+  }
+
+  _onKeyDown(e) {
+    if (this.state === 'START' || this.state === 'STATS') return;
+
+    if (this.state === 'FEEDBACK') {
+      e.preventDefault();
+      this.state = 'PLAYING';
+      if (this.problemsRemaining <= 0) {
+        this._endSession();
+      } else {
+        this._nextProblem();
+        this.renderer.showScreen('game');
+      }
+      return;
+    }
+
+    if (this.state === 'RESULTS') return;
+    if (this.state !== 'PLAYING') return;
+
+    e.preventDefault();
+
+    const key = this._normalizeKey(e);
+    if (!key) return;
+
+    this.userKeystrokes.push(key);
+    this.engine.processKey(key);
+    this._renderGame();
+    this._checkCompletion();
+  }
+
+  _normalizeKey(e) {
+    if (e.altKey && e.key === 'j') return 'Alt-j';
+    if (e.altKey && e.key === 'k') return 'Alt-k';
+    if (e.ctrlKey && e.key === 'v') return 'Ctrl-v';
+    if (e.key === 'Escape') return 'Escape';
+    if (e.key === 'Enter') return 'Enter';
+    if (e.key === 'Backspace') return 'Backspace';
+    if (e.key === 'Tab') return 'Tab';
+    if (e.key === ' ') return ' ';
+    if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) return e.key;
+    return null;
+  }
+
+  _checkCompletion() {
+    const target = this.currentProblem.targetBuffer;
+    const current = this.engine.buffer;
+
+    const bufferMatch = current.length === target.length &&
+      current.every((line, i) => line === target[i]);
+
+    if (this.currentProblem.targetCursorPos) {
+      const cursorMatch = this.engine.cursor.row === this.currentProblem.targetCursorPos.row &&
+        this.engine.cursor.col === this.currentProblem.targetCursorPos.col;
+      if (!bufferMatch || !cursorMatch) return;
+    } else {
+      if (!bufferMatch) return;
+    }
+
+    if (this.engine.mode !== 'NORMAL') return;
+
+    const timeMs = Date.now() - this.problemStartTime;
+    const optimal = this.currentProblem.optimalKeystrokes;
+    const isOptimal = this.userKeystrokes.length <= optimal.length;
+
+    if (isOptimal) this.optimalStreak++;
+    else this.optimalStreak = 0;
+
+    const result = {
+      category: this.currentProblem.category,
+      difficulty: this.currentProblem.difficulty,
+      keystrokes: this.userKeystrokes.length,
+      optimal: optimal.length,
+      time: timeMs,
+      isOptimal
+    };
+
+    this.sessionProblems.push(result);
+    this.stats.recordProblem(result);
+
+    if (this.sessionMode === 'count') {
+      this.problemsRemaining--;
+    }
+
+    if (this.sessionMode === 'timed') {
+      const editorEl = document.getElementById('editor');
+      editorEl.classList.remove('solved-flash');
+      void editorEl.offsetWidth;
+      editorEl.classList.add('solved-flash');
+      this._nextProblem();
+    } else {
+      this.state = 'FEEDBACK';
+      this.renderer.renderFeedback(this.currentProblem, this.userKeystrokes, timeMs);
+      this.renderer.showScreen('feedback');
+    }
+  }
+
+  _endSession() {
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+      this.timerInterval = null;
+    }
+    this.state = 'RESULTS';
+
+    const problems = this.sessionProblems;
+    const totalKeystrokes = problems.reduce((s, p) => s + p.keystrokes, 0);
+    const totalOptimal = problems.reduce((s, p) => s + p.optimal, 0);
+    const avgEfficiency = totalOptimal / Math.max(1, totalKeystrokes);
+    const avgTime = problems.length > 0
+      ? problems.reduce((s, p) => s + p.time, 0) / problems.length
+      : 0;
+    const optimalCount = problems.filter(p => p.isOptimal).length;
+
+    const catBreakdown = {};
+    for (const p of problems) {
+      if (!catBreakdown[p.category]) {
+        catBreakdown[p.category] = { totalKeystrokes: 0, totalOptimal: 0, count: 0 };
+      }
+      catBreakdown[p.category].totalKeystrokes += p.keystrokes;
+      catBreakdown[p.category].totalOptimal += p.optimal;
+      catBreakdown[p.category].count++;
+    }
+
+    let worstCategory = null, worstEff = Infinity;
+    for (const [cat, s] of Object.entries(catBreakdown)) {
+      const eff = s.totalOptimal / Math.max(1, s.totalKeystrokes);
+      if (eff < worstEff) { worstEff = eff; worstCategory = cat; }
+    }
+
+    const session = {
+      date: new Date().toISOString(),
+      mode: `${this.sessionMode}-${this.sessionVal}`,
+      problemsCompleted: problems.length,
+      totalKeystrokes,
+      totalOptimal,
+      avgEfficiency,
+      avgTime,
+      optimalCount,
+      streak: this.optimalStreak,
+      categoryBreakdown: catBreakdown,
+      worstCategory
+    };
+
+    this.stats.endSession(session);
+    this.renderer.renderResults(session);
+    this.renderer.showScreen('results');
+  }
+
+  _renderGame() {
+    if (this.state !== 'PLAYING') return;
+
+    const timerText = this.sessionMode === 'timed' ? `${this.timeRemaining}s` : '';
+    const counterText = this.sessionMode === 'count'
+      ? `${this.sessionProblems.length + 1} / ${this.sessionProblems.length + this.problemsRemaining}`
+      : `#${this.sessionProblems.length + 1}`;
+
+    const modeLabel = this.sessionMode === 'practice'
+      ? `Practice: ${this.sessionVal}`
+      : `${this.sessionMode} ${this.sessionVal}${this.sessionMode === 'timed' ? 's' : ''}`;
+
+    this.renderer.renderGame(
+      this.engine, this.currentProblem, this.userKeystrokes,
+      timerText, counterText, modeLabel
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// BOOT
+// ══════════════════════════════════════════════════════════════
+
+const app = new App();
+</script>
+</body>
+</html>
