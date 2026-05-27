@@ -893,8 +893,9 @@ class VimEngine {
     if (type === '@_play') {
       const n = this._getCount();
       const reg = key === '@' ? this.lastMacroReg : key;
+      this._clearPending();
       if (reg && this.macroRegisters[reg]) { for (let i = 0; i < n; i++) this._playMacro(reg); }
-      this._clearPending(); return;
+      return;
     }
     if (type === 'm_set') { if (/[a-z]/.test(key)) this.marks[key] = { row: this.cursor.row, col: this.cursor.col }; this._clearPending(); return; }
     if (type === "'_jump") {
@@ -1570,13 +1571,13 @@ class ProblemGenerator {
     if (d <= 2) {
       const n = d === 1 ? 3 : this._ri(4, 5);
       const words = this._pickN(this.varNames, n);
-      const lines = words.map(w => `"${w}"`);
-      const target = lines.map(l => `<li>${l.slice(1, -1)}</li>`);
-      const optKeys = ['q', 'a', 'c', 'i', '"', '<', 'l', 'i', '>', 'Escape', 'A', '<', '/', 'l', 'i', '>', 'Escape', 'j', 'q'];
+      const lines = words.map((w, i) => `let ${w} = ${this._ri(1, 99)}`);
+      const target = lines.map(l => l + ';');
+      const optKeys = ['q', 'a', 'A', ';', 'Escape', 'j', 'q'];
       const repeat = n - 1;
       if (repeat > 1) optKeys.push(...String(repeat).split(''));
       optKeys.push('@', 'a');
-      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Wrap each quoted word in <li> tags using a macro', optimalKeystrokes: optKeys, category: 'macro', difficulty: d };
+      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Append semicolon to each line using a macro', optimalKeystrokes: optKeys, category: 'macro', difficulty: d };
     }
     if (d === 3) {
       const n = 4;
@@ -1588,13 +1589,13 @@ class ProblemGenerator {
     {
       const n = this._ri(3, 5);
       const words = this._pickN(this.varNames, n);
-      const lines = words.map((w, i) => `${w} = ${this._ri(1, 99)}`);
-      const target = lines.map(l => `std::cout << ${l.split(' = ')[0]} << std::endl;`);
-      const optKeys = ['q', 'a', 'c', 'i', 'w', 's', 't', 'd', ':', ':', 'c', 'o', 'u', 't', ' ', '<', '<', ' ', 'Escape', 'f', '=', 'C', ' ', '<', '<', ' ', 's', 't', 'd', ':', ':', 'e', 'n', 'd', 'l', ';', 'Escape', 'j', '0', 'q'];
+      const lines = words.map(w => `  ${w} = ${this._ri(1, 99)};`);
+      const target = lines.map(l => '//' + l);
+      const optKeys = ['q', 'a', '0', 'i', '/', '/', 'Escape', 'j', 'q'];
       const repeat = n - 1;
       if (repeat > 1) optKeys.push(...String(repeat).split(''));
       optKeys.push('@', 'a');
-      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Convert assignments to cout statements using a macro', optimalKeystrokes: optKeys, category: 'macro', difficulty: d };
+      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Comment out each line using a macro', optimalKeystrokes: optKeys, category: 'macro', difficulty: d };
     }
   }
 
