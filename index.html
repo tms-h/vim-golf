@@ -224,6 +224,8 @@ html, body {
 
 .target-line-added { border-left: 2px solid var(--correct); padding-left: 4px; opacity: 1; }
 .search-match { background: rgba(246, 193, 119, 0.3); }
+.sub-old { background: rgba(235, 111, 146, 0.3); text-decoration: line-through; text-decoration-color: #eb6f92; }
+.sub-new { background: rgba(156, 207, 216, 0.3); color: #9ccfd8; }
 .font-size-controls { position: fixed; top: 8px; right: 8px; display: flex; gap: 4px; z-index: 50; }
 .font-size-btn { background: var(--surface); border: 1px solid var(--faint); color: var(--muted); font-family: var(--font-mono); font-size: .7rem; width: 24px; height: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: color .15s, border-color .15s; }
 .font-size-btn:hover { color: var(--accent); border-color: var(--accent); }
@@ -473,11 +475,20 @@ class VimEngine {
         this.pending.operator = key === 'U' ? 'gU' : 'gu';
         return;
       }
+      if (key === 'c') {
+        this.pending.operator = 'gc';
+        return;
+      }
       this._clearPending(); return;
     }
 
     if ((key >= '1' && key <= '9') || (key === '0' && this.pending.count.length > 0)) {
       this.pending.count += key; return;
+    }
+
+    if (this.pending.operator === 'gc' && key === 'c') {
+      this._toggleCommentLines(this.cursor.row, this.cursor.row + this._getCount() - 1);
+      this._clearPending(); return;
     }
 
     if ('dcy><'.includes(key)) {
@@ -643,6 +654,23 @@ class VimEngine {
       }
       return;
     }
+
+    if (key === 'U' || key === 'u') {
+      const range = this.mode === 'VISUAL_BLOCK' ? this._getVisualBlockRange() : this._getVisualRange();
+      if (range) this._caseRange(range, key === 'U');
+      this.mode = 'NORMAL'; this.visualAnchor = null; this._clearPending(); return;
+    }
+
+    if (this.pending.g) {
+      this.pending.g = false;
+      if (key === 'c') {
+        const range = this.mode === 'VISUAL_BLOCK' ? this._getVisualBlockRange() : this._getVisualRange();
+        if (range) this._toggleCommentLines(range.start?.row ?? range.startRow, range.end?.row ?? range.endRow);
+        this.mode = 'NORMAL'; this.visualAnchor = null; this._clearPending(); return;
+      }
+      this._clearPending(); return;
+    }
+    if (key === 'g') { this.pending.g = true; return; }
 
     if ('dcy><'.includes(key)) {
       if (this.mode === 'VISUAL_BLOCK') {
@@ -1068,7 +1096,22 @@ class VimEngine {
       case '>': this._indentRange(range, 1); break;
       case '<': this._indentRange(range, -1); break;
       case 'gU': case 'gu': this._caseRange(range, op === 'gU'); break;
+      case 'gc': this._toggleCommentLines(range.start.row, range.end.row); break;
     }
+  }
+
+  _toggleCommentLines(sr, er) {
+    sr = Math.max(0, sr); er = Math.min(this.buffer.length - 1, er);
+    const allCommented = this.buffer.slice(sr, er + 1).every(l => /^\s*\/\//.test(l));
+    for (let r = sr; r <= er; r++) {
+      if (allCommented) {
+        this.buffer[r] = this.buffer[r].replace(/^(\s*)\/\/\s?/, '$1');
+      } else {
+        const indent = this.buffer[r].match(/^(\s*)/)[1];
+        this.buffer[r] = indent + '// ' + this.buffer[r].slice(indent.length);
+      }
+    }
+    this._markDirty();
   }
 
   _caseRange(range, upper) {
@@ -1421,55 +1464,125 @@ class ProblemGenerator {
       { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1), m = lines[row].match(/[a-zA-Z_]\w*/); if (!m) return null; const eng = new VimEngine(); eng.loadBuffer(lines.map(l => l), { row, col: m.index }); eng.processKey('d'); eng.processKey('w'); return { initialBuffer: lines, cursorPos: { row, col: m.index }, targetBuffer: eng.buffer, description: 'Delete forward to next word', optimalKeystrokes: ['d', 'w'], category: 'deletion', difficulty: 1 }; }
     }
     if (d === 2) {
-      const v = this._ri(0, 2);
+      const v = this._ri(0, 3);
       if (v === 0) { const vn = this._pick(this.varNames), s = this._pick(this.strLiterals), line = `const ${vn} = "${s}";`, qi = line.indexOf('"'); const target = [line.slice(0, qi + 1) + line.slice(line.lastIndexOf('"'))]; return { initialBuffer: [line], cursorPos: { row: 0, col: qi + 1 }, targetBuffer: target, description: 'Delete inside the double quotes', optimalKeystrokes: ['d', 'i', '"'], category: 'deletion', difficulty: 2 }; }
       if (v === 1) { const fn = this._pick(this.funcNames), [p1, p2] = this._pickN(this.varNames, 2), line = `${fn}(${p1}, ${p2})`; return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf('(') + 1 }, targetBuffer: [`${fn}()`], description: 'Delete inside the parentheses', optimalKeystrokes: ['d', 'i', '('], category: 'deletion', difficulty: 2 }; }
-      { const lines = this._getSnippet(); if (lines.length < 3) return null; const cnt = this._ri(2, Math.min(3, lines.length)), row = this._ri(0, lines.length - cnt); const target = [...lines.slice(0, row), ...lines.slice(row + cnt)]; if (!target.length) return null; const ks = cnt === 1 ? ['d', 'd'] : [...String(cnt).split(''), 'd', 'd']; return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: `Delete ${cnt} lines`, optimalKeystrokes: ks, category: 'deletion', difficulty: 2 }; }
+      if (v === 2) { const lines = this._getSnippet(); if (lines.length < 3) return null; const cnt = this._ri(2, Math.min(3, lines.length)), row = this._ri(0, lines.length - cnt); const target = [...lines.slice(0, row), ...lines.slice(row + cnt)]; if (!target.length) return null; const ks = cnt === 1 ? ['d', 'd'] : [...String(cnt).split(''), 'd', 'd']; return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: `Delete ${cnt} lines`, optimalKeystrokes: ks, category: 'deletion', difficulty: 2 }; }
+      { const vn = this._pick(this.varNames), s = this._pick(this.strLiterals); const line = `let ${vn} = '${s}';`; const qi = line.indexOf("'"); const target = [line.slice(0, qi + 1) + line.slice(line.lastIndexOf("'"))]; return { initialBuffer: [line], cursorPos: { row: 0, col: qi + 1 }, targetBuffer: target, description: "Delete inside the single quotes", optimalKeystrokes: ['d', 'i', "'"], category: 'deletion', difficulty: 2 }; }
     }
     if (d === 3) {
-      const fn = this._pick(this.funcNames), [k1, k2] = this._pickN(this.varNames, 2), s = this._pick(this.strLiterals); const line = `${fn}({${k1}: "${s}", ${k2}: true});`; const ob = line.indexOf('{'), cb = line.indexOf('}'); return { initialBuffer: [line], cursorPos: { row: 0, col: ob + 1 }, targetBuffer: [line.slice(0, ob + 1) + line.slice(cb)], description: 'Delete inside the curly braces', optimalKeystrokes: ['d', 'i', '{'], category: 'deletion', difficulty: 3 };
+      const v = this._ri(0, 2);
+      if (v === 0) { const fn = this._pick(this.funcNames), [k1, k2] = this._pickN(this.varNames, 2), s = this._pick(this.strLiterals); const line = `${fn}({${k1}: "${s}", ${k2}: true});`; const ob = line.indexOf('{'), cb = line.indexOf('}'); return { initialBuffer: [line], cursorPos: { row: 0, col: ob + 1 }, targetBuffer: [line.slice(0, ob + 1) + line.slice(cb)], description: 'Delete inside the curly braces', optimalKeystrokes: ['d', 'i', '{'], category: 'deletion', difficulty: 3 }; }
+      if (v === 1) {
+        const lines = this._getSnippet(); if (lines.length < 5) return null;
+        const row = this._ri(1, lines.length - 2);
+        const target = [...lines.slice(0, row), ...lines.slice(row + 1)];
+        const eng = new VimEngine(); eng.loadBuffer(lines.map(l => l), { row: 0, col: 0 });
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Delete line ${row + 1} (navigate then delete)`, optimalKeystrokes: [...String(row + 1).split(''), 'G', 'd', 'd'], category: 'deletion', difficulty: 3 };
+      }
+      { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1); const m = lines[row].match(/= (.+);/); if (!m) return null; const eqIdx = lines[row].indexOf('= ') + 2; const target = [...lines]; target[row] = lines[row].slice(0, eqIdx) + ';'; return { initialBuffer: lines, cursorPos: { row, col: eqIdx }, targetBuffer: target, description: 'Delete from cursor to the semicolon', optimalKeystrokes: ['d', 't', ';'], category: 'deletion', difficulty: 3 }; }
     }
     if (d === 4) {
-      const lines = this._jsSnippet(); if (lines.length < 4) return null;
-      const target = [lines[0], lines[lines.length - 1]];
-      const cnt = lines.length - 2;
-      return { initialBuffer: lines, cursorPos: { row: 1, col: 0 }, targetBuffer: target, description: `Delete ${cnt} lines inside the function body`, optimalKeystrokes: [...String(cnt).split(''), 'd', 'd'], category: 'deletion', difficulty: 4 };
+      const v = this._ri(0, 2);
+      if (v === 0) { const lines = this._jsSnippet(); if (lines.length < 4) return null; const target = [lines[0], lines[lines.length - 1]]; const cnt = lines.length - 2; return { initialBuffer: lines, cursorPos: { row: 1, col: 0 }, targetBuffer: target, description: `Delete ${cnt} lines inside the function body`, optimalKeystrokes: [...String(cnt).split(''), 'd', 'd'], category: 'deletion', difficulty: 4 }; }
+      if (v === 1) {
+        const fn = this._pick(this.funcNames), [p1, p2, p3] = this._pickN(this.varNames, 3);
+        const line = `${fn}(${p1}, ${p2}, ${p3})`;
+        const c1 = line.indexOf(p2), c2 = line.indexOf(p3) + p3.length;
+        const target = [`${fn}(${p1})`];
+        const eng = new VimEngine(); eng.loadBuffer([line], { row: 0, col: line.indexOf(',') });
+        ['d', 'i', '('].forEach(k => eng.processKey(k));
+        return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf('(') + 1 }, targetBuffer: [`${fn}()`], description: 'Delete all function arguments', optimalKeystrokes: ['d', 'i', '('], category: 'deletion', difficulty: 4 };
+      }
+      {
+        const lines = this._getSnippet(); if (lines.length < 6) return null;
+        const sr = this._ri(1, 2), er = this._ri(lines.length - 3, lines.length - 2);
+        const target = [...lines.slice(0, sr), ...lines.slice(er + 1)];
+        if (!target.length) return null;
+        const cnt = er - sr + 1;
+        return { initialBuffer: lines, cursorPos: { row: sr, col: 0 }, targetBuffer: target, description: `Delete ${cnt} lines from line ${sr + 1}`, optimalKeystrokes: [...String(cnt).split(''), 'd', 'd'], category: 'deletion', difficulty: 4 };
+      }
     }
     {
-      const fn = this._pick(this.funcNames), [k1, k2, k3] = this._pickN(this.varNames, 3);
-      const line = `${fn}(${k1}, [${k2}, ${k3}])`;
-      const bi = line.indexOf('['), ci = line.indexOf(']');
-      return { initialBuffer: [line], cursorPos: { row: 0, col: bi + 1 }, targetBuffer: [`${fn}(${k1}, [])`], description: 'Delete inside the brackets', optimalKeystrokes: ['d', 'i', '['], category: 'deletion', difficulty: 5 };
+      const v = this._ri(0, 2);
+      if (v === 0) { const fn = this._pick(this.funcNames), [k1, k2, k3] = this._pickN(this.varNames, 3); const line = `${fn}(${k1}, [${k2}, ${k3}])`; return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf('[') + 1 }, targetBuffer: [`${fn}(${k1}, [])`], description: 'Delete inside the brackets', optimalKeystrokes: ['d', 'i', '['], category: 'deletion', difficulty: 5 }; }
+      if (v === 1) {
+        const lines = this._cppClassSnippet(); if (lines.length < 6) return null;
+        const pubIdx = lines.findIndex(l => l.includes('public:'));
+        const privIdx = lines.findIndex(l => l.includes('private:'));
+        if (pubIdx < 0 || privIdx < 0 || privIdx - pubIdx < 3) return null;
+        const cnt = privIdx - pubIdx - 1;
+        const target = [...lines.slice(0, pubIdx + 1), ...lines.slice(privIdx)];
+        return { initialBuffer: lines, cursorPos: { row: pubIdx + 1, col: 0 }, targetBuffer: target, description: `Delete ${cnt} public methods`, optimalKeystrokes: [...String(cnt).split(''), 'd', 'd'], category: 'deletion', difficulty: 5 };
+      }
+      {
+        const fn = this._pick(this.funcNames), v1 = this._pick(this.varNames), v2 = this._pick(this.varNames);
+        const line = `${fn}(${v1}, {key: "${this._pick(this.strLiterals)}", arr: [${v2}]})`;
+        const bi = line.indexOf('{'), be = line.lastIndexOf('}');
+        return { initialBuffer: [line], cursorPos: { row: 0, col: bi + 1 }, targetBuffer: [line.slice(0, bi + 1) + line.slice(be)], description: 'Delete inside nested curly braces', optimalKeystrokes: ['d', 'i', '{'], category: 'deletion', difficulty: 5 };
+      }
     }
   }
 
   _gen_change(d) {
     if (d <= 1) {
-      const v = this._ri(0, 1);
+      const v = this._ri(0, 2);
       if (v === 0) { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1), words = lines[row].match(/[a-zA-Z_]\w*/g); if (!words?.length) return null; const word = this._pick(words), col = lines[row].indexOf(word), nw = this._pick(this.varNames.filter(x => x !== word)); const eng = new VimEngine(); eng.loadBuffer(lines.map(l => l), { row, col }); ['c','i','w', ...nw.split(''), 'Escape'].forEach(k => eng.processKey(k)); return { initialBuffer: lines, cursorPos: { row, col }, targetBuffer: eng.buffer, description: `Change "${word}" to "${nw}"`, optimalKeystrokes: ['c','i','w', ...nw.split(''), 'Escape'], category: 'change', difficulty: 1 }; }
-      { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1), col = this._ri(1, Math.max(1, Math.floor(lines[row].length / 2))), nt = this._pick(this.strLiterals); const target = [...lines]; target[row] = lines[row].slice(0, col) + nt; return { initialBuffer: lines, cursorPos: { row, col }, targetBuffer: target, description: `Change from cursor to end of line to "${nt}"`, optimalKeystrokes: ['C', ...nt.split(''), 'Escape'], category: 'change', difficulty: 1 }; }
+      if (v === 1) { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1), col = this._ri(1, Math.max(1, Math.floor(lines[row].length / 2))), nt = this._pick(this.strLiterals); const target = [...lines]; target[row] = lines[row].slice(0, col) + nt; return { initialBuffer: lines, cursorPos: { row, col }, targetBuffer: target, description: `Change from cursor to end of line to "${nt}"`, optimalKeystrokes: ['C', ...nt.split(''), 'Escape'], category: 'change', difficulty: 1 }; }
+      { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1); const eng = new VimEngine(); eng.loadBuffer(lines.map(l => l), { row, col: 0 }); const w = lines[row].match(/[a-zA-Z_]\w*/)?.[0]; if (!w) return null; const nw = this._pick(this.varNames.filter(x => x !== w)); ['c', 'w', ...nw.split(''), 'Escape'].forEach(k => eng.processKey(k)); return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: eng.buffer, description: `Change word forward to "${nw}"`, optimalKeystrokes: ['c','w', ...nw.split(''), 'Escape'], category: 'change', difficulty: 1 }; }
     }
-    if (d <= 2) {
-      const vn = this._pick(this.varNames), os = this._pick(this.strLiterals), ns = this._pick(this.strLiterals.filter(x => x !== os)); const line = `const ${vn} = "${os}";`; return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(os) }, targetBuffer: [`const ${vn} = "${ns}";`], description: `Change "${os}" to "${ns}" inside quotes`, optimalKeystrokes: ['c','i','"', ...ns.split(''), 'Escape'], category: 'change', difficulty: 2 };
+    if (d === 2) {
+      const v = this._ri(0, 2);
+      if (v === 0) { const vn = this._pick(this.varNames), os = this._pick(this.strLiterals), ns = this._pick(this.strLiterals.filter(x => x !== os)); const line = `const ${vn} = "${os}";`; return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(os) }, targetBuffer: [`const ${vn} = "${ns}";`], description: `Change "${os}" to "${ns}" inside quotes`, optimalKeystrokes: ['c','i','"', ...ns.split(''), 'Escape'], category: 'change', difficulty: 2 }; }
+      if (v === 1) { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1); const eng = new VimEngine(); eng.loadBuffer(lines.map(l => l), { row, col: 0 }); const m = lines[row].match(/[a-zA-Z_]\w*/g); if (!m || m.length < 2) return null; const nw = this._pick(this.varNames.filter(x => !m.includes(x))); ['2', 'c', 'w', ...nw.split(''), ' ', 'Escape'].forEach(k => eng.processKey(k)); return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: eng.buffer, description: `Change 2 words forward`, optimalKeystrokes: ['2','c','w', ...nw.split(''), ' ', 'Escape'], category: 'change', difficulty: 2 }; }
+      { const vn = this._pick(this.varNames), os = this._pick(this.strLiterals), ns = this._pick(this.strLiterals.filter(x => x !== os)); const line = `let ${vn} = '${os}';`; return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(os) }, targetBuffer: [`let ${vn} = '${ns}';`], description: `Change '${os}' to '${ns}' inside single quotes`, optimalKeystrokes: ['c','i',"'", ...ns.split(''), 'Escape'], category: 'change', difficulty: 2 }; }
     }
     if (d === 3) {
-      const fn = this._pick(this.funcNames), [p1, p2] = this._pickN(this.varNames, 2), [np1, np2] = this._pickN(this.varNames.filter(x => x !== p1 && x !== p2), 2);
-      const line = `${fn}(${p1}, ${p2})`;
-      const target = [`${fn}(${np1}, ${np2})`];
-      return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf('(') + 1 }, targetBuffer: target, description: 'Change inside the parentheses', optimalKeystrokes: ['c','i','(', ...`${np1}, ${np2}`.split(''), 'Escape'], category: 'change', difficulty: 3 };
+      const v = this._ri(0, 2);
+      if (v === 0) { const fn = this._pick(this.funcNames), [p1, p2] = this._pickN(this.varNames, 2), [np1, np2] = this._pickN(this.varNames.filter(x => x !== p1 && x !== p2), 2); const line = `${fn}(${p1}, ${p2})`; return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf('(') + 1 }, targetBuffer: [`${fn}(${np1}, ${np2})`], description: 'Change inside the parentheses', optimalKeystrokes: ['c','i','(', ...`${np1}, ${np2}`.split(''), 'Escape'], category: 'change', difficulty: 3 }; }
+      if (v === 1) {
+        const vn = this._pick(this.varNames), s = this._pick(this.strLiterals);
+        const line = `const ${vn} = "${s}";`;
+        const nv = this._pick(this.varNames.filter(x => x !== vn));
+        const ns = this._pick(this.strLiterals.filter(x => x !== s));
+        const eng = new VimEngine(); eng.loadBuffer([line], { row: 0, col: 0 });
+        ['c', 'i', 'w', ...nv.split(''), 'Escape'].forEach(k => eng.processKey(k));
+        const afterWord = eng.buffer[0];
+        eng.processKey('f'); eng.processKey('"');
+        ['c', 'i', '"', ...ns.split(''), 'Escape'].forEach(k => eng.processKey(k));
+        return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(vn) }, targetBuffer: eng.buffer, description: `Change variable name and string value`, optimalKeystrokes: ['c','i','w', ...nv.split(''), 'Escape', 'f', '"', 'c','i','"', ...ns.split(''), 'Escape'], category: 'change', difficulty: 3 };
+      }
+      { const fn = this._pick(this.funcNames), [k1, k2] = this._pickN(this.varNames, 2); const line = `${fn}({${k1}: 0, ${k2}: 1})`; const nb = this._pick(this.varNames); return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf('{') + 1 }, targetBuffer: [`${fn}({${nb}})`], description: 'Change inside the curly braces', optimalKeystrokes: ['c','i','{', ...nb.split(''), 'Escape'], category: 'change', difficulty: 3 }; }
     }
     if (d === 4) {
-      const lines = this._simpleLines(), row = this._ri(0, lines.length - 1);
-      const newLine = `// ${this._pick(this.strLiterals)}`;
-      const target = [...lines]; target[row] = newLine;
-      return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: `Replace entire line content`, optimalKeystrokes: ['S', ...newLine.split(''), 'Escape'], category: 'change', difficulty: 4 };
+      const v = this._ri(0, 2);
+      if (v === 0) { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1); const newLine = `// ${this._pick(this.strLiterals)}`; const target = [...lines]; target[row] = newLine; return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: `Replace entire line content`, optimalKeystrokes: ['S', ...newLine.split(''), 'Escape'], category: 'change', difficulty: 4 }; }
+      if (v === 1) {
+        const fn = this._pick(this.funcNames), [p1, p2] = this._pickN(this.varNames, 2);
+        const line = `function ${fn}(${p1}, ${p2}) {`;
+        const nfn = this._pick(this.funcNames.filter(x => x !== fn));
+        const eng = new VimEngine(); eng.loadBuffer([line], { row: 0, col: line.indexOf(fn) });
+        ['c', 'i', 'w', ...nfn.split(''), 'Escape'].forEach(k => eng.processKey(k));
+        return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(fn) }, targetBuffer: eng.buffer, description: `Rename function "${fn}" to "${nfn}"`, optimalKeystrokes: ['c','i','w', ...nfn.split(''), 'Escape'], category: 'change', difficulty: 4 };
+      }
+      {
+        const lines = this._simpleLines(), row = this._ri(0, lines.length - 1);
+        const semi = lines[row].indexOf(';');
+        if (semi < 0) return null;
+        const newEnd = ` + ${this._ri(1, 50)};`;
+        const target = [...lines]; target[row] = lines[row].slice(0, semi) + newEnd;
+        return { initialBuffer: lines, cursorPos: { row, col: semi }, targetBuffer: target, description: 'Change from semicolon to end of line', optimalKeystrokes: ['C', ...newEnd.split(''), 'Escape'], category: 'change', difficulty: 4 };
+      }
     }
     {
-      const vn = this._pick(this.varNames), s = this._pick(this.strLiterals);
-      const line = `const ${vn} = { key: "${s}" };`;
-      const ns = this._pick(this.strLiterals.filter(x => x !== s));
-      const target = [`const ${vn} = { key: "${ns}" };`];
-      return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(s) }, targetBuffer: target, description: `Change "${s}" to "${ns}" inside nested structure`, optimalKeystrokes: ['c','i','"', ...ns.split(''), 'Escape'], category: 'change', difficulty: 5 };
+      const v = this._ri(0, 1);
+      if (v === 0) { const vn = this._pick(this.varNames), s = this._pick(this.strLiterals); const line = `const ${vn} = { key: "${s}" };`; const ns = this._pick(this.strLiterals.filter(x => x !== s)); return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(s) }, targetBuffer: [`const ${vn} = { key: "${ns}" };`], description: `Change "${s}" to "${ns}" inside nested structure`, optimalKeystrokes: ['c','i','"', ...ns.split(''), 'Escape'], category: 'change', difficulty: 5 }; }
+      {
+        const fn = this._pick(this.funcNames), v1 = this._pick(this.varNames), v2 = this._pick(this.varNames.filter(x => x !== v1));
+        const line = `${fn}([${v1}, ${v2}])`;
+        const nv = this._pick(this.varNames.filter(x => x !== v1 && x !== v2));
+        return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf('[') + 1 }, targetBuffer: [`${fn}([${nv}])`], description: 'Change inside brackets to single value', optimalKeystrokes: ['c','i','[', ...nv.split(''), 'Escape'], category: 'change', difficulty: 5 };
+      }
     }
   }
 
@@ -1551,27 +1664,68 @@ class ProblemGenerator {
 
   _gen_visual(d) {
     if (d <= 1) {
-      const lines = this._getSnippet(), row = this._ri(0, lines.length - 1); const target = [...lines]; target[row] = '  ' + lines[row]; return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: 'Indent the current line', optimalKeystrokes: ['>','>'], category: 'visual', difficulty: 1 };
+      const v = this._ri(0, 1);
+      if (v === 0) { const lines = this._getSnippet(), row = this._ri(0, lines.length - 1); const target = [...lines]; target[row] = '  ' + lines[row]; return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: 'Indent the current line', optimalKeystrokes: ['>','>'], category: 'visual', difficulty: 1 }; }
+      { const lines = this._getSnippet(), row = this._ri(0, lines.length - 1); if (!lines[row].startsWith('  ')) return null; const target = [...lines]; target[row] = lines[row].slice(2); return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: 'Dedent the current line', optimalKeystrokes: ['<','<'], category: 'visual', difficulty: 1 }; }
     }
     if (d === 2) {
-      const lines = this._getSnippet(); if (lines.length < 3) return null; const sr = this._ri(0, lines.length - 2), cnt = this._ri(1, Math.min(2, lines.length - 1 - sr)); const target = [...lines]; for (let r = sr; r <= sr + cnt; r++) target[r] = '  ' + lines[r]; return { initialBuffer: lines, cursorPos: { row: sr, col: 0 }, targetBuffer: target, description: `Indent ${cnt + 1} lines`, optimalKeystrokes: cnt === 1 ? ['>','j'] : ['>', String(cnt), 'j'], category: 'visual', difficulty: 2 };
+      const v = this._ri(0, 2);
+      if (v === 0) { const lines = this._getSnippet(); if (lines.length < 3) return null; const sr = this._ri(0, lines.length - 2), cnt = this._ri(1, Math.min(2, lines.length - 1 - sr)); const target = [...lines]; for (let r = sr; r <= sr + cnt; r++) target[r] = '  ' + lines[r]; return { initialBuffer: lines, cursorPos: { row: sr, col: 0 }, targetBuffer: target, description: `Indent ${cnt + 1} lines`, optimalKeystrokes: cnt === 1 ? ['>','j'] : ['>', String(cnt), 'j'], category: 'visual', difficulty: 2 }; }
+      if (v === 1) { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1); const target = [...lines]; target[row] = lines[row].toUpperCase(); return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: 'Uppercase the entire line using visual mode', optimalKeystrokes: ['V', 'U'], category: 'visual', difficulty: 2 }; }
+      { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1); const w = lines[row].match(/[a-zA-Z_]\w*/)?.[0]; if (!w) return null; const col = lines[row].indexOf(w); const target = [...lines]; target[row] = lines[row].slice(0, col) + w.toUpperCase() + lines[row].slice(col + w.length); return { initialBuffer: lines, cursorPos: { row, col }, targetBuffer: target, description: `Uppercase "${w}" using visual + U`, optimalKeystrokes: ['v', 'e', 'U'], category: 'visual', difficulty: 2 }; }
     }
     if (d === 3) {
-      const lines = this._getSnippet(); if (lines.length < 4) return null;
-      const sr = this._ri(0, lines.length - 3);
-      const target = lines.filter((_, i) => i < sr || i > sr + 1);
-      if (!target.length) return null;
-      return { initialBuffer: lines, cursorPos: { row: sr, col: 0 }, targetBuffer: target, description: 'Delete these 2 lines using visual line mode', optimalKeystrokes: ['V', 'j', 'd'], category: 'visual', difficulty: 3 };
+      const v = this._ri(0, 2);
+      if (v === 0) { const lines = this._getSnippet(); if (lines.length < 4) return null; const sr = this._ri(0, lines.length - 3); const target = lines.filter((_, i) => i < sr || i > sr + 1); if (!target.length) return null; return { initialBuffer: lines, cursorPos: { row: sr, col: 0 }, targetBuffer: target, description: 'Delete these 2 lines using visual line mode', optimalKeystrokes: ['V', 'j', 'd'], category: 'visual', difficulty: 3 }; }
+      if (v === 1) {
+        const lines = this._getSnippet(); if (lines.length < 4) return null;
+        const sr = this._ri(0, lines.length - 3), cnt = 2;
+        const target = [...lines]; const yanked = lines.slice(sr, sr + cnt + 1);
+        target.splice(lines.length, 0, ...yanked);
+        return { initialBuffer: lines, cursorPos: { row: sr, col: 0 }, targetBuffer: target, description: `Yank ${cnt + 1} lines and paste at the end`, optimalKeystrokes: ['V', ...Array(cnt).fill('j'), 'y', 'G', 'p'], category: 'visual', difficulty: 3 };
+      }
+      { const n = this._ri(3, 4); const words = this._pickN(this.varNames, n); const lines = words.map(w => `  let ${w} = 0;`); const target = lines.map(l => l.slice(2)); const jKeys = Array(n - 1).fill('j'); return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Dedent ${n} lines using visual line mode`, optimalKeystrokes: ['V', ...jKeys, '<'], category: 'visual', difficulty: 3 }; }
     }
-    if (d >= 4) {
-      const n = this._ri(3, 4);
-      const words = this._pickN(this.varNames, n);
-      const lines = words.map(w => `let ${w} = 0;`);
-      const target = lines.map(l => '  ' + l);
-      const jKeys = Array(n - 1).fill('j');
-      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Indent ${n} lines using visual line`, optimalKeystrokes: ['V', ...jKeys, '>'], category: 'visual', difficulty: d };
+    if (d === 4) {
+      const v = this._ri(0, 2);
+      if (v === 0) { const n = this._ri(3, 4); const words = this._pickN(this.varNames, n); const lines = words.map(w => `let ${w} = 0;`); const target = lines.map(l => '  ' + l); const jKeys = Array(n - 1).fill('j'); return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Indent ${n} lines using visual line`, optimalKeystrokes: ['V', ...jKeys, '>'], category: 'visual', difficulty: 4 }; }
+      if (v === 1) {
+        const n = this._ri(3, 5); const words = this._pickN(this.varNames, n);
+        const lines = words.map(w => `${w} = true;`);
+        const target = lines.map(l => `let ${l}`);
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Prepend "let " to each line using visual block`, optimalKeystrokes: ['Ctrl-v', ...Array(n - 1).fill('j'), 'I', 'l', 'e', 't', ' ', 'Escape'], category: 'visual', difficulty: 4 };
+      }
+      {
+        const n = this._ri(3, 4); const words = this._pickN(this.varNames, n);
+        const lines = words.map(w => `let ${w} = 0;`);
+        const target = lines.map(l => l.toUpperCase());
+        const jKeys = Array(n - 1).fill('j');
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Uppercase all ${n} lines`, optimalKeystrokes: ['V', ...jKeys, 'U'], category: 'visual', difficulty: 4 };
+      }
     }
-    return null;
+    {
+      const v = this._ri(0, 2);
+      if (v === 0) {
+        const n = this._ri(4, 5); const words = this._pickN(this.varNames, n);
+        const lines = words.map(w => `${w} = true;`);
+        const target = lines.map(l => `// ${l}`);
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Comment out ${n} lines using visual block insert`, optimalKeystrokes: ['Ctrl-v', ...Array(n - 1).fill('j'), 'I', '/', '/', ' ', 'Escape'], category: 'visual', difficulty: 5 };
+      }
+      if (v === 1) {
+        const n = this._ri(3, 4); const words = this._pickN(this.varNames, n);
+        const lines = words.map(w => `let ${w} = 0`);
+        const target = lines.map(l => l + ';');
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Append ";" to each line using visual block`, optimalKeystrokes: ['Ctrl-v', ...Array(n - 1).fill('j'), '$', 'A', ';', 'Escape'], category: 'visual', difficulty: 5 };
+      }
+      {
+        const lines = this._getSnippet(); if (lines.length < 5) return null;
+        const sr = this._ri(1, 2), er = sr + 2;
+        const selected = lines.slice(sr, er + 1);
+        const target = [...lines.slice(0, sr), ...lines.slice(er + 1), ...selected];
+        const jKeys = Array(er - sr).fill('j');
+        return { initialBuffer: lines, cursorPos: { row: sr, col: 0 }, targetBuffer: target, description: 'Move selected lines to end of file', optimalKeystrokes: ['V', ...jKeys, 'd', 'G', 'p'], category: 'visual', difficulty: 5 };
+      }
+    }
   }
 
   _gen_compound(d) {
@@ -1581,35 +1735,33 @@ class ProblemGenerator {
       { const lines = this._simpleLines(); if (lines.length < 2) return null; const row = this._ri(0, lines.length - 2); const target = [...lines]; const cur = target[row], nxt = target[row + 1].trimStart(); target[row] = cur + (nxt ? ' ' + nxt : ''); target.splice(row + 1, 1); return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: 'Join with the line below', optimalKeystrokes: ['J'], category: 'compound', difficulty: 1 }; }
     }
     if (d === 2) {
-      const v = this._ri(0, 1);
+      const v = this._ri(0, 2);
       if (v === 0) { const vn = this._pick(this.varNames), ow = this._pick(this.strLiterals), nw = this._pick(this.strLiterals.filter(x => x !== ow)); const line = `const ${vn} = "${ow}" + "${ow}";`; return { initialBuffer: [line], cursorPos: { row: 0, col: 0 }, targetBuffer: [line.split(ow).join(nw)], description: `Replace all "${ow}" with "${nw}" on this line`, optimalKeystrokes: [';', ...'s/'.split(''), ...ow.split(''), '/', ...nw.split(''), '/','g','Enter'], category: 'compound', difficulty: 2 }; }
-      { const lines = this._simpleLines(); if (lines.length < 2) return null; return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: lines.slice(2), description: 'Delete two lines using dd and dot repeat', optimalKeystrokes: ['d','d','.'], category: 'compound', difficulty: 2 }; }
+      if (v === 1) { const lines = this._simpleLines(); if (lines.length < 2) return null; return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: lines.slice(2), description: 'Delete two lines using dd and dot repeat', optimalKeystrokes: ['d','d','.'], category: 'compound', difficulty: 2 }; }
+      { const line = `let ${this._pick(this.varNames)} = ${this._ri(1, 99)};`; const target = [`// ${line}`]; return { initialBuffer: [line], cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Comment out this line using gcc', optimalKeystrokes: ['g','c','c'], category: 'compound', difficulty: 2 }; }
     }
     if (d === 3) {
-      const vn = this._pick(this.varNames), val = this._ri(1, 99);
-      const line = `let ${vn} = ${val};`;
-      const target = [`let ${vn} = ${val + 1};`];
-      return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(String(val)) }, targetBuffer: target, description: 'Increment the number', optimalKeystrokes: ['Ctrl-a'], category: 'compound', difficulty: 3 };
+      const v = this._ri(0, 1);
+      if (v === 0) { const vn = this._pick(this.varNames), val = this._ri(1, 99); const line = `let ${vn} = ${val};`; const target = [`let ${vn} = ${val + 1};`]; return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(String(val)) }, targetBuffer: target, description: 'Increment the number', optimalKeystrokes: ['Ctrl-a'], category: 'compound', difficulty: 3 }; }
+      { const n = this._ri(3, 4); const words = this._pickN(this.varNames, n); const lines = words.map(w => `// let ${w} = 0;`); const target = words.map(w => `let ${w} = 0;`); const jc = n - 1; return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Uncomment ${n} lines using gc`, optimalKeystrokes: ['g','c', ...String(jc).split(''), 'j'], category: 'compound', difficulty: 3 }; }
     }
     if (d === 4) {
-      const vn = this._pick(this.varNames);
-      const line = `const ${vn} = "Hello World";`;
-      const ch = vn[0];
-      const upper = ch.toUpperCase();
-      const target = [line.slice(0, 6) + upper + line.slice(7)];
-      return { initialBuffer: [line], cursorPos: { row: 0, col: 6 }, targetBuffer: target, description: 'Toggle case of character under cursor', optimalKeystrokes: ['~'], category: 'compound', difficulty: 4 };
+      const v = this._ri(0, 1);
+      if (v === 0) { const vn = this._pick(this.varNames); const line = `const ${vn} = "Hello World";`; const ch = vn[0]; const upper = ch.toUpperCase(); const target = [line.slice(0, 6) + upper + line.slice(7)]; return { initialBuffer: [line], cursorPos: { row: 0, col: 6 }, targetBuffer: target, description: 'Toggle case of character under cursor', optimalKeystrokes: ['~'], category: 'compound', difficulty: 4 }; }
+      { const n = 3; const words = this._pickN(this.varNames, n); const lines = words.map(w => `let ${w} = 0;`); const target = lines.map(l => `// ${l}`); const jc = n - 1; return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Comment out ${n} lines using gc${jc}j`, optimalKeystrokes: ['g','c', ...String(jc).split(''), 'j'], category: 'compound', difficulty: 4 }; }
     }
     {
-      const lines = this._simpleLines(); if (lines.length < 3) return null;
-      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: [...lines].reverse(), description: 'Reverse the order of all lines', optimalKeystrokes: ['d','d','G','p','k','d','d','g','g','P'], category: 'compound', difficulty: 5 };
+      const v = this._ri(0, 1);
+      if (v === 0) { const lines = this._simpleLines(); if (lines.length < 3) return null; return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: [...lines].reverse(), description: 'Reverse the order of all lines', optimalKeystrokes: ['d','d','G','p','k','d','d','g','g','P'], category: 'compound', difficulty: 5 }; }
+      { const n = this._ri(3, 4); const words = this._pickN(this.varNames, n); const lines = [`function test() {`, ...words.map(w => `  let ${w} = 0;`), `}`]; const target = [`function test() {`, ...words.map(w => `  // let ${w} = 0;`), `}`]; const jc = n - 1; return { initialBuffer: lines, cursorPos: { row: 1, col: 0 }, targetBuffer: target, description: 'Comment out the function body using gc', optimalKeystrokes: ['g','c', ...String(jc).split(''), 'j'], category: 'compound', difficulty: 5 }; }
     }
   }
 
   _gen_macro(d) {
-    if (d <= 2) {
-      const n = d === 1 ? 3 : this._ri(4, 5);
+    if (d <= 1) {
+      const n = 3;
       const words = this._pickN(this.varNames, n);
-      const lines = words.map((w, i) => `let ${w} = ${this._ri(1, 99)}`);
+      const lines = words.map(w => `let ${w} = ${this._ri(1, 99)}`);
       const target = lines.map(l => l + ';');
       const optKeys = ['q', 'a', 'A', ';', 'Escape', 'j', 'q'];
       const repeat = n - 1;
@@ -1617,53 +1769,103 @@ class ProblemGenerator {
       optKeys.push('@', 'a');
       return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Append semicolon to each line using a macro', optimalKeystrokes: optKeys, category: 'macro', difficulty: d };
     }
+    if (d === 2) {
+      const v = this._ri(0, 1);
+      if (v === 0) { const n = this._ri(4, 5); const words = this._pickN(this.varNames, n); const lines = words.map(w => `let ${w} = ${this._ri(1, 99)}`); const target = lines.map(l => l + ';'); const optKeys = ['q', 'a', 'A', ';', 'Escape', 'j', 'q']; const repeat = n - 1; if (repeat > 1) optKeys.push(...String(repeat).split('')); optKeys.push('@', 'a'); return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Append semicolon to each line using a macro', optimalKeystrokes: optKeys, category: 'macro', difficulty: 2 }; }
+      { const n = this._ri(3, 4); const words = this._pickN(this.varNames, n); const lines = words.map(w => `  ${w}`); const target = words.map(w => w); const optKeys = ['q', 'a', '0', '2', 'x', 'j', 'q']; const repeat = n - 1; if (repeat > 1) optKeys.push(...String(repeat).split('')); optKeys.push('@', 'a'); return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Remove leading 2 spaces from each line', optimalKeystrokes: optKeys, category: 'macro', difficulty: 2 }; }
+    }
     if (d === 3) {
-      const n = 4;
-      const words = this._pickN(this.varNames, n);
-      const lines = words.map(w => `- ${w}`);
-      const target = words.map(w => w);
-      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Remove "- " prefix from each line', optimalKeystrokes: ['q', 'a', '0', '2', 'x', 'j', 'q', '3', '@', 'a'], category: 'macro', difficulty: 3 };
+      const v = this._ri(0, 1);
+      if (v === 0) { const n = 4; const words = this._pickN(this.varNames, n); const lines = words.map(w => `- ${w}`); const target = words.map(w => w); return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Remove "- " prefix from each line', optimalKeystrokes: ['q', 'a', '0', '2', 'x', 'j', 'q', '3', '@', 'a'], category: 'macro', difficulty: 3 }; }
+      { const n = 4; const words = this._pickN(this.varNames, n); const lines = words.map(w => `${w} = true`); const target = words.map(w => `let ${w} = true;`); const optKeys = ['q', 'a', 'I', 'l', 'e', 't', ' ', 'Escape', 'A', ';', 'Escape', 'j', 'q']; const repeat = n - 1; if (repeat > 1) optKeys.push(...String(repeat).split('')); optKeys.push('@', 'a'); return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Add "let " prefix and ";" suffix to each line', optimalKeystrokes: optKeys, category: 'macro', difficulty: 3 }; }
+    }
+    if (d === 4) {
+      const v = this._ri(0, 1);
+      if (v === 0) { const n = this._ri(3, 5); const words = this._pickN(this.varNames, n); const lines = words.map(w => `  ${w} = ${this._ri(1, 99)};`); const target = lines.map(l => '//' + l); const optKeys = ['q', 'a', '0', 'i', '/', '/', 'Escape', 'j', 'q']; const repeat = n - 1; if (repeat > 1) optKeys.push(...String(repeat).split('')); optKeys.push('@', 'a'); return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Comment out each line using a macro', optimalKeystrokes: optKeys, category: 'macro', difficulty: 4 }; }
+      { const n = this._ri(3, 4); const words = this._pickN(this.varNames, n); const vals = words.map(() => this._ri(1, 99)); const lines = words.map((w, i) => `let ${w} = ${vals[i]};`); const target = words.map((w, i) => `const ${w} = ${vals[i]};`); const optKeys = ['q', 'a', '0', 'c', 'w', 'c', 'o', 'n', 's', 't', ' ', 'Escape', 'j', 'q']; const repeat = n - 1; if (repeat > 1) optKeys.push(...String(repeat).split('')); optKeys.push('@', 'a'); return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Change "let" to "const" on each line using a macro', optimalKeystrokes: optKeys, category: 'macro', difficulty: 4 }; }
     }
     {
-      const n = this._ri(3, 5);
-      const words = this._pickN(this.varNames, n);
-      const lines = words.map(w => `  ${w} = ${this._ri(1, 99)};`);
-      const target = lines.map(l => '//' + l);
-      const optKeys = ['q', 'a', '0', 'i', '/', '/', 'Escape', 'j', 'q'];
-      const repeat = n - 1;
-      if (repeat > 1) optKeys.push(...String(repeat).split(''));
-      optKeys.push('@', 'a');
-      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Comment out each line using a macro', optimalKeystrokes: optKeys, category: 'macro', difficulty: d };
+      const v = this._ri(0, 1);
+      if (v === 0) {
+        const n = this._ri(4, 5); const words = this._pickN(this.varNames, n);
+        const vals = words.map(() => this._ri(1, 99));
+        const lines = words.map((w, i) => `${w} = ${vals[i]}`);
+        const target = words.map((w, i) => `self.${w} = ${vals[i]};`);
+        const optKeys = ['q', 'a', 'I', 's', 'e', 'l', 'f', '.', 'Escape', 'A', ';', 'Escape', 'j', 'q'];
+        const repeat = n - 1;
+        if (repeat > 1) optKeys.push(...String(repeat).split(''));
+        optKeys.push('@', 'a');
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Add "self." prefix and ";" suffix using a macro', optimalKeystrokes: optKeys, category: 'macro', difficulty: 5 };
+      }
+      {
+        const n = this._ri(3, 5); const words = this._pickN(this.varNames, n);
+        const lines = words.map(w => `  ${w} = ${this._ri(1, 99)};`);
+        const target = lines.map(l => '//' + l);
+        const optKeys = ['q', 'a', '0', 'i', '/', '/', 'Escape', 'j', 'q'];
+        const repeat = n - 1;
+        if (repeat > 1) optKeys.push(...String(repeat).split(''));
+        optKeys.push('@', 'a');
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Comment out each line using a macro', optimalKeystrokes: optKeys, category: 'macro', difficulty: 5 };
+      }
     }
   }
 
   _gen_search(d) {
     if (d <= 1) {
-      const word = this._pick(this.varNames);
-      const other1 = this._pick(this.varNames.filter(x => x !== word));
-      const other2 = this._pick(this.varNames.filter(x => x !== word && x !== other1));
-      const lines = [`const ${word} = [];`, `let ${other1} = ${word};`, `return ${other2};`];
-      const col = lines[0].indexOf(word);
-      const targetCol = lines[1].indexOf(word);
-      return { initialBuffer: lines, cursorPos: { row: 0, col }, targetBuffer: lines, targetCursorPos: { row: 1, col: targetCol }, description: `Jump to next occurrence of "${word}"`, optimalKeystrokes: ['*'], category: 'search', difficulty: 1 };
+      const v = this._ri(0, 1);
+      if (v === 0) { const word = this._pick(this.varNames); const other1 = this._pick(this.varNames.filter(x => x !== word)); const other2 = this._pick(this.varNames.filter(x => x !== word && x !== other1)); const lines = [`const ${word} = [];`, `let ${other1} = ${word};`, `return ${other2};`]; const col = lines[0].indexOf(word); const targetCol = lines[1].indexOf(word); return { initialBuffer: lines, cursorPos: { row: 0, col }, targetBuffer: lines, targetCursorPos: { row: 1, col: targetCol }, description: `Jump to next occurrence of "${word}"`, optimalKeystrokes: ['*'], category: 'search', difficulty: 1 }; }
+      { const word = this._pick(this.strLiterals); const lines = [`let x = "${word}";`, `// ${this._pick(this.strLiterals)}`, `let y = "${word}";`]; const col = lines[0].indexOf(word); return { initialBuffer: lines, cursorPos: { row: 0, col }, targetBuffer: lines, targetCursorPos: { row: 2, col: lines[2].indexOf(word) }, description: `Jump to next "${word}" using *`, optimalKeystrokes: ['*'], category: 'search', difficulty: 1 }; }
     }
-    if (d <= 2) {
-      const lines = this._jsSnippet();
-      const keyword = 'return';
-      let targetRow = -1, targetCol = -1;
-      for (let r = 0; r < lines.length; r++) {
-        const idx = lines[r].indexOf(keyword);
-        if (idx >= 0) { targetRow = r; targetCol = idx; break; }
+    if (d === 2) {
+      const v = this._ri(0, 1);
+      if (v === 0) { const lines = this._jsSnippet(); const keyword = 'return'; let targetRow = -1, targetCol = -1; for (let r = 0; r < lines.length; r++) { const idx = lines[r].indexOf(keyword); if (idx >= 0) { targetRow = r; targetCol = idx; break; } } if (targetRow <= 0) return null; return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: lines, targetCursorPos: { row: targetRow, col: targetCol }, description: `Navigate to "${keyword}" using search`, optimalKeystrokes: ['/', ...keyword.split(''), 'Enter'], category: 'search', difficulty: 2 }; }
+      { const word = this._pick(this.varNames); const lines = [`let ${word} = 0;`, `${word} += 1;`, `// use ${word}`]; const col = lines[2].indexOf(word); return { initialBuffer: lines, cursorPos: { row: 2, col }, targetBuffer: lines, targetCursorPos: { row: 0, col: lines[0].indexOf(word) }, description: `Search backward for "${word}"`, optimalKeystrokes: ['#'], category: 'search', difficulty: 2 }; }
+    }
+    if (d === 3) {
+      const v = this._ri(0, 2);
+      if (v === 0) { const word = this._pick(this.varNames); const lines = [`let ${word} = 0;`, `${word} += 1;`, `console.log(${word});`]; const col = lines[0].indexOf(word); return { initialBuffer: lines, cursorPos: { row: 0, col }, targetBuffer: lines, targetCursorPos: { row: 2, col: lines[2].indexOf(word) }, description: `Jump to the last occurrence of "${word}"`, optimalKeystrokes: ['*', 'n'], category: 'search', difficulty: 3 }; }
+      if (v === 1) {
+        const word = this._pick(this.varNames);
+        const lines = [`let ${word} = 0;`, `${word} += 1;`, `return ${word};`];
+        const col = lines[0].indexOf(word);
+        const eng = new VimEngine(); eng.loadBuffer(lines.map(l=>l), {row:0, col});
+        ['*', 'c', 'i', 'w', ...'x'.split(''), 'Escape'].forEach(k => eng.processKey(k));
+        return { initialBuffer: lines, cursorPos: { row: 0, col }, targetBuffer: eng.buffer, description: `Search for "${word}" and change the next occurrence`, optimalKeystrokes: ['*', 'c', 'i', 'w', 'x', 'Escape'], category: 'search', difficulty: 3 };
       }
-      if (targetRow <= 0) return null;
-      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: lines, targetCursorPos: { row: targetRow, col: targetCol }, description: `Navigate to "${keyword}" using search`, optimalKeystrokes: ['/', ...keyword.split(''), 'Enter'], category: 'search', difficulty: 2 };
+      { const kw = this._pick(['const','let','return','function']); const lines = this._jsSnippet(); let tr = -1, tc = -1; for (let r = 1; r < lines.length; r++) { const idx = lines[r].indexOf(kw); if (idx >= 0) { tr = r; tc = idx; break; } } if (tr < 0) return null; return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: lines, targetCursorPos: { row: tr, col: tc }, description: `Search forward for "${kw}"`, optimalKeystrokes: ['/', ...kw.split(''), 'Enter'], category: 'search', difficulty: 3 }; }
+    }
+    if (d === 4) {
+      const v = this._ri(0, 1);
+      if (v === 0) {
+        const word = this._pick(this.varNames), nw = this._pick(this.varNames.filter(x => x !== word));
+        const lines = [`let ${word} = 0;`, `${word} += 1;`, `return ${word};`];
+        const target = [`let ${word} = 0;`, `${nw} += 1;`, `return ${word};`];
+        const eng = new VimEngine(); eng.loadBuffer(lines.map(l=>l), {row:0, col: lines[0].indexOf(word)});
+        ['*', 'c', 'i', 'w', ...nw.split(''), 'Escape'].forEach(k => eng.processKey(k));
+        return { initialBuffer: lines, cursorPos: { row: 0, col: lines[0].indexOf(word) }, targetBuffer: eng.buffer, description: `Jump to next "${word}" and replace with "${nw}"`, optimalKeystrokes: ['*', 'c', 'i', 'w', ...nw.split(''), 'Escape'], category: 'search', difficulty: 4 };
+      }
+      {
+        const word = this._pick(this.varNames);
+        const lines = [`let ${word} = [];`, `${word}.push(1);`, `${word}.push(2);`, `return ${word};`];
+        const target = lines.filter((_, i) => i !== 2);
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Search to line 3 and delete it`, optimalKeystrokes: ['/', ...`${word}.push(2)`.split(''), 'Enter', 'd', 'd'], category: 'search', difficulty: 4 };
+      }
     }
     {
-      const word = this._pick(this.varNames);
-      const lines = [`let ${word} = 0;`, `${word} += 1;`, `console.log(${word});`];
-      const col = lines[0].indexOf(word);
-      const t2col = lines[2].indexOf(word);
-      return { initialBuffer: lines, cursorPos: { row: 0, col }, targetBuffer: lines, targetCursorPos: { row: 2, col: t2col }, description: `Jump to the last occurrence of "${word}"`, optimalKeystrokes: ['*', 'n'], category: 'search', difficulty: d };
+      const v = this._ri(0, 1);
+      if (v === 0) {
+        const word = this._pick(this.varNames), nw = this._pick(this.varNames.filter(x => x !== word));
+        const lines = [`let ${word} = 0;`, `${word} += 1;`, `log(${word});`, `return ${word};`];
+        const target = lines.map(l => l.split(word).join(nw));
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Replace all "${word}" with "${nw}" using substitute`, optimalKeystrokes: [':', ...'%s/'.split(''), ...word.split(''), '/', ...nw.split(''), '/','g','Enter'], category: 'search', difficulty: 5 };
+      }
+      {
+        const word = this._pick(this.varNames), nw = this._pick(this.varNames.filter(x => x !== word));
+        const [o1, o2] = this._pickN(this.varNames.filter(x => x !== word && x !== nw), 2);
+        const lines = [`let ${word} = 0;`, `let ${o1} = 1;`, `${word} += ${o1};`, `let ${o2} = ${word};`];
+        const target = [`let ${nw} = 0;`, `let ${o1} = 1;`, `${nw} += ${o1};`, `let ${o2} = ${nw};`];
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Rename "${word}" to "${nw}" everywhere`, optimalKeystrokes: [':', ...'%s/'.split(''), ...word.split(''), '/', ...nw.split(''), '/','g','Enter'], category: 'search', difficulty: 5 };
+      }
     }
   }
 
@@ -1674,25 +1876,68 @@ class ProblemGenerator {
       const target = [...lines]; target.splice(0, 0, comment);
       return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Mark position, go to top, insert a comment line, return to mark', optimalKeystrokes: ['m', 'a', 'O', ...comment.split(''), 'Escape', "'", 'a'], category: 'marks', difficulty: 1 };
     }
+    if (d === 2) {
+      const v = this._ri(0, 1);
+      if (v === 0) { const lines = this._simpleLines(); if (lines.length < 3) return null; const comment = '// end'; const target = [...lines]; target.push(comment); return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Mark position, go to end, add a line, return to mark', optimalKeystrokes: ['m', 'a', 'G', 'o', ...comment.split(''), 'Escape', "'", 'a'], category: 'marks', difficulty: 2 }; }
+      { const lines = this._simpleLines(); if (lines.length < 3) return null; const target = [...lines]; target.splice(lines.length, 0, lines[0]); return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Mark line 1, yank it, go to end, paste', optimalKeystrokes: ['m', 'a', 'y', 'y', 'G', 'p'], category: 'marks', difficulty: 2 }; }
+    }
+    if (d === 3) {
+      const v = this._ri(0, 1);
+      if (v === 0) {
+        const lines = this._simpleLines(); if (lines.length < 3) return null;
+        const comment = '// end';
+        const target = [...lines]; target[0] = '// start'; target.push(comment);
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Mark, go to end and add line, return and change line', optimalKeystrokes: ['m', 'a', 'G', 'o', ...comment.split(''), 'Escape', "'", 'a', 'S', ...('// start').split(''), 'Escape'], category: 'marks', difficulty: 3 };
+      }
+      {
+        const lines = this._getSnippet(); if (lines.length < 5) return null;
+        const mr = this._ri(0, 1), tr = lines.length - 1;
+        const target = [...lines]; target.splice(tr + 1, 0, lines[mr]);
+        return { initialBuffer: lines, cursorPos: { row: mr, col: 0 }, targetBuffer: target, description: 'Mark position, copy line, paste at end, return to mark', optimalKeystrokes: ['m', 'a', 'y', 'y', 'G', 'p', "'", 'a'], category: 'marks', difficulty: 3 };
+      }
+    }
+    if (d === 4) {
+      const lines = this._getSnippet(); if (lines.length < 5) return null;
+      const mr = 0, delRow = this._ri(2, lines.length - 2);
+      const target = lines.filter((_, i) => i !== delRow);
+      return { initialBuffer: lines, cursorPos: { row: mr, col: 0 }, targetBuffer: target, description: `Mark line 1, delete line ${delRow + 1}, return to mark`, optimalKeystrokes: ['m', 'a', ...String(delRow + 1).split(''), 'G', 'd', 'd', "'", 'a'], category: 'marks', difficulty: 4 };
+    }
     {
-      const lines = this._simpleLines(); if (lines.length < 3) return null;
-      const last = lines.length - 1;
-      const comment = '// end';
-      const target = [...lines]; target[0] = '// start'; target.push(comment);
-      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Mark line 1, go to end and append a line, return to mark and change line', optimalKeystrokes: ['m', 'a', 'G', 'o', ...comment.split(''), 'Escape', "'", 'a', 'S', ...('// start').split(''), 'Escape'], category: 'marks', difficulty: d };
+      const lines = this._getSnippet(); if (lines.length < 6) return null;
+      const mr = 1, tr = lines.length - 2;
+      const nw = `// ${this._pick(this.strLiterals)}`;
+      const target = [...lines]; target[tr] = nw;
+      return { initialBuffer: lines, cursorPos: { row: mr, col: 0 }, targetBuffer: target, description: `Mark position, jump to line ${tr + 1}, change it, return`, optimalKeystrokes: ['m', 'a', ...String(tr + 1).split(''), 'G', 'S', ...nw.split(''), 'Escape', "'", 'a'], category: 'marks', difficulty: 5 };
     }
   }
 
   _gen_registers(d) {
-    if (d <= 2) {
+    if (d <= 1) {
       const lines = this._simpleLines(), row = 0;
       const target = [...lines]; target.splice(row + 1, 0, lines[row]);
       return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: 'Yank line into register "a" and paste', optimalKeystrokes: ['"', 'a', 'y', 'y', '"', 'a', 'p'], category: 'registers', difficulty: d };
     }
+    if (d === 2) {
+      const v = this._ri(0, 1);
+      if (v === 0) { const lines = this._simpleLines(); const target = [...lines]; target.splice(1, 0, lines[0]); return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Yank line into register "a" and paste below', optimalKeystrokes: ['"', 'a', 'y', 'y', '"', 'a', 'p'], category: 'registers', difficulty: 2 }; }
+      { const lines = this._simpleLines(); if (lines.length < 3) return null; const w = lines[0].match(/[a-zA-Z_]\w*/)?.[0]; if (!w) return null; const col = lines[0].indexOf(w); const target = [...lines]; const last = target.length - 1; const m2 = target[last].match(/[a-zA-Z_]\w*/); if (!m2) return null; target[last] = target[last].slice(0, target[last].indexOf(m2[0])) + w + target[last].slice(target[last].indexOf(m2[0]) + m2[0].length); const eng = new VimEngine(); eng.loadBuffer(lines.map(l=>l), {row:0, col}); ['"','a','y','i','w','G'].forEach(k => eng.processKey(k)); const m3 = lines[last].match(/[a-zA-Z_]\w*/); const tc = lines[last].indexOf(m3[0]); eng.cursor.col = tc; ['c','i','w'].forEach(k => eng.processKey(k)); eng.processKey('Ctrl-r'); eng.processKey('a'); eng.processKey('Escape'); return { initialBuffer: lines, cursorPos: { row: 0, col }, targetBuffer: eng.buffer, description: `Yank word to register, paste it on last line`, optimalKeystrokes: ['"','a','y','i','w','G', ...String(tc + 1).split(''), '|', 'c','i','w','Ctrl-r','a','Escape'], category: 'registers', difficulty: 2 }; }
+    }
+    if (d === 3) {
+      const v = this._ri(0, 1);
+      if (v === 0) { const lines = this._simpleLines(); if (lines.length < 3) return null; const target = [lines[0], lines[2], lines[0]]; return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Yank line 1 to "a", delete line 2, paste "a" at end', optimalKeystrokes: ['"', 'a', 'y', 'y', 'j', 'd', 'd', 'G', '"', 'a', 'p'], category: 'registers', difficulty: 3 }; }
+      { const lines = this._simpleLines(); if (lines.length < 3) return null; const target = [lines[0], lines[1], lines[2], lines[0], lines[2]]; return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Yank line 1 to "a", line 3 to "b", paste both at end', optimalKeystrokes: ['"','a','y','y','2','j','"','b','y','y','G','"','a','p','"','b','p'], category: 'registers', difficulty: 3 }; }
+    }
+    if (d === 4) {
+      const lines = this._simpleLines(); if (lines.length < 3) return null;
+      const target = [lines[2], lines[1], lines[0]];
+      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Reverse 3 lines using named registers', optimalKeystrokes: ['"','a','d','d','"','b','d','d','p','"','a','p','"','b','P'], category: 'registers', difficulty: 4 };
+    }
     {
       const lines = this._simpleLines(); if (lines.length < 3) return null;
-      const target = [lines[0], lines[2], lines[0]];
-      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Yank line 1 to register "a", delete line 2, paste "a at end', optimalKeystrokes: ['"', 'a', 'y', 'y', 'j', 'd', 'd', 'G', '"', 'a', 'p'], category: 'registers', difficulty: d };
+      const target = [lines[0], lines[1], lines[2], lines[0]];
+      const nw = `// ${this._pick(this.strLiterals)}`;
+      target[0] = nw;
+      return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Yank line 1 to "a", change it, paste original at end', optimalKeystrokes: ['"','a','y','y','S', ...nw.split(''), 'Escape', 'G', '"', 'a', 'p'], category: 'registers', difficulty: 5 };
     }
   }
 
@@ -1840,6 +2085,8 @@ const VIM_TIPS = [
   '0 goes to column 0, ^ goes to first non-blank',
   'Ctrl-a and Ctrl-x increment/decrement numbers',
   '~ toggles the case of the character under the cursor',
+  'gcc toggles comment on a line, gc{motion} comments a range',
+  ':%s/old/new/g replaces all occurrences in the file',
 ];
 
 class UIRenderer {
@@ -1951,8 +2198,9 @@ class UIRenderer {
     const d = problem.difficulty || 1;
     this.el('game-difficulty').innerHTML = Array.from({length: 5}, (_, i) => `<span class="${i < d ? 'd-active' : ''}">★</span>`).join('');
 
-    this._renderBuffer(this.el('editor'), engine.buffer, engine.cursor, engine.getVisualSelection(), null, null);
-    this._renderBuffer(this.el('target-editor'), problem.targetBuffer, null, null, problem.targetCursorPos, engine.buffer);
+    const searchHL = this._getSearchHighlights(engine);
+    this._renderBuffer(this.el('editor'), engine.buffer, engine.cursor, engine.getVisualSelection(), null, null, searchHL);
+    this._renderBuffer(this.el('target-editor'), problem.targetBuffer, null, null, problem.targetCursorPos, engine.buffer, null);
 
     const mode = engine.mode;
     const mi = this.el('mode-indicator');
@@ -1972,12 +2220,11 @@ class UIRenderer {
       co.classList.remove('hidden');
       co.querySelector('.cmd-prefix').textContent = engine._searchMode ? (engine._searchForward !== false ? '/' : '?') : ':';
       this.el('command-text').textContent = engine.commandBuffer;
-      this._highlightSearchInBuffer(engine);
     } else co.classList.add('hidden');
 
     const rec = engine.macroRecording ? ` recording @${engine.macroRecording}` : '';
     const hints = {
-      NORMAL: `Tab→skip  Esc→quit  Ctrl-g→solution  i a o  d c y  w b e f  / * n  q @  m '${rec}`,
+      NORMAL: `Tab→skip  Esc→quit  Ctrl-g→solution  i a o  d c y  w b e f  / * n  q @  m '  gcc${rec}`,
       INSERT: 'type to insert · Esc or jk → normal · Alt-j/k move lines',
       VISUAL: 'd c y > <  motions extend · Esc → normal',
       VISUAL_LINE: 'd c y > <  j k extend · Esc → normal',
@@ -1988,8 +2235,20 @@ class UIRenderer {
     this.el('mode-hints').textContent = hints[mode] || '';
   }
 
-  _renderBuffer(container, buffer, cursor, visualRange, targetCursor, diffAgainst) {
+  _renderBuffer(container, buffer, cursor, visualRange, targetCursor, diffAgainst, searchHL) {
     let html = '';
+    const matchSet = new Set();
+    const subInserts = {};
+    if (searchHL?.matches) {
+      for (const m of searchHL.matches) {
+        for (let c = m.col; c < m.col + m.len; c++) matchSet.add(m.row * 1e6 + c);
+        if (searchHL.isSub && searchHL.replacement !== null) {
+          const repText = searchHL.replacement.replace(/\\([/])/g, '$1');
+          if (!subInserts[m.row]) subInserts[m.row] = [];
+          subInserts[m.row].push({ afterCol: m.col + m.len - 1, text: repText });
+        }
+      }
+    }
     for (let row = 0; row < buffer.length; row++) {
       const line = buffer[row], ln = `<span class="line-num">${String(row + 1).padStart(2)}</span>`;
       const hl = this._syntaxHL(line);
@@ -2000,6 +2259,7 @@ class UIRenderer {
         if (row >= diffAgainst.length) lineCls += ' target-line-added';
         else if (diffAgainst[row] !== line) lineCls += ' target-line-diff';
       }
+      const rowInserts = subInserts[row] || [];
       for (let col = 0; col <= maxCol; col++) {
         const ch = col < line.length ? this._esc(line[col]) : ' ';
         const cls = [];
@@ -2010,9 +2270,15 @@ class UIRenderer {
             if (row >= visualRange.startRow && row <= visualRange.endRow && col >= visualRange.startCol && col <= visualRange.endCol && col < line.length) cls.push('char-visual');
           } else if (this._inVis(row, col, visualRange) && col < line.length) cls.push('char-visual');
         }
+        const isMatch = matchSet.has(row * 1e6 + col);
+        if (isMatch && searchHL.isSub && searchHL.replacement !== null) cls.push('sub-old');
+        else if (isMatch) cls.push('search-match');
         if (cls.length) chars += `<span class="${cls.join(' ')}">${ch}</span>`;
         else if (col < line.length) chars += hl[col] || ch;
         else if (cursor && row === cursor.row && col === cursor.col) chars += `<span class="char-cursor"> </span>`;
+        for (const ins of rowInserts) {
+          if (ins.afterCol === col) chars += `<span class="sub-new">${this._esc(ins.text)}</span>`;
+        }
       }
       html += `<span class="${lineCls}">${ln}${chars}</span>\n`;
     }
@@ -2045,25 +2311,39 @@ class UIRenderer {
     const p = row * 1e5 + col; return p >= range.start.row * 1e5 + range.start.col && p <= range.end.row * 1e5 + range.end.col;
   }
 
-  _highlightSearchInBuffer(engine) {
-    if (!engine._searchMode && !engine.commandBuffer.startsWith('s/') && !engine.commandBuffer.startsWith('%s/')) return;
-    let pattern = '';
-    if (engine._searchMode) {
-      pattern = engine.commandBuffer;
-    } else {
-      const m = engine.commandBuffer.match(/^%?s\/((?:[^\\\/]|\\.)*)/);
-      if (m) pattern = m[1];
+  _getSearchHighlights(engine) {
+    let pattern = '', replacement = null, isGlobal = false, isSub = false;
+    let startR = 0, endR = engine.buffer.length - 1;
+
+    if (engine.mode === 'COMMAND') {
+      if (engine._searchMode) {
+        pattern = engine.commandBuffer;
+      } else {
+        const m = engine.commandBuffer.match(/^(%)?s\/((?:[^\\\/]|\\.)*)(?:\/((?:[^\\\/]|\\.)*)(?:\/(g?))?)?$/);
+        if (m) {
+          if (m[1] === '%') { startR = 0; endR = engine.buffer.length - 1; }
+          else { startR = engine.cursor.row; endR = engine.cursor.row; }
+          pattern = m[2]; replacement = m[3] ?? null; isGlobal = m[4] === 'g'; isSub = true;
+        }
+      }
+    } else if (engine.searchPattern) {
+      pattern = engine.searchPattern;
     }
-    if (!pattern) return;
+    if (!pattern) return null;
     let re;
-    try { re = new RegExp(pattern, 'g'); } catch { try { re = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'); } catch { return; } }
-    const editor = this.el('editor');
-    const lines = editor.querySelectorAll('.editor-line');
-    lines.forEach(lineEl => {
-      const text = lineEl.textContent.replace(/^\s*\d+/, '');
+    try { re = new RegExp(pattern, 'g'); } catch { try { re = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'); } catch { return null; } }
+    const matches = [];
+    const sr = isSub ? startR : 0, er = isSub ? endR : engine.buffer.length - 1;
+    for (let r = sr; r <= er; r++) {
       re.lastIndex = 0;
-      if (re.test(text)) lineEl.style.background = 'rgba(246, 193, 119, 0.1)';
-    });
+      let m;
+      while ((m = re.exec(engine.buffer[r])) !== null) {
+        matches.push({ row: r, col: m.index, len: m[0].length, text: m[0] });
+        if (!isGlobal && isSub) break;
+        if (m[0].length === 0) { re.lastIndex++; if (re.lastIndex > engine.buffer[r].length) break; }
+      }
+    }
+    return { matches, replacement, isSub };
   }
 
   _esc(s) { return s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : ''; }
