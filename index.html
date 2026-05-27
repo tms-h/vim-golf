@@ -95,6 +95,9 @@ html, body {
 .char-target-cursor { outline: 2px solid var(--accent); outline-offset: -1px; }
 .syn-kw { color: #c4a7e7; } .syn-str { color: #f6c177; }
 .syn-comment { color: var(--faint); font-style: italic; } .syn-num { color: #9ccfd8; }
+.syn-type { color: #9ccfd8; } .syn-func { color: #eb6f92; }
+.syn-op { color: #e0def4; font-weight: bold; } .syn-preproc { color: #c4a7e7; font-style: italic; }
+.syn-bool { color: #eb6f92; } .syn-ns { color: #9ccfd8; }
 .target-editor { opacity: .5; }
 .target-line-diff { border-left: 2px solid var(--accent); padding-left: 4px; opacity: 1; }
 
@@ -785,6 +788,9 @@ class VimEngine {
       case 'E': return this._motionBigE(n);
       case '0': return { row: this.cursor.row, col: 0, linewise: false, inclusive: false };
       case '^': return { row: this.cursor.row, col: this._firstNonBlank(this.cursor.row), linewise: false, inclusive: false };
+      case '_': { const r = Math.min(this.buffer.length - 1, this.cursor.row + n - 1); return { row: r, col: this._firstNonBlank(r), linewise: true, inclusive: false }; }
+      case '+': case 'Enter': { const r = Math.min(this.buffer.length - 1, this.cursor.row + n); return { row: r, col: this._firstNonBlank(r), linewise: true, inclusive: false }; }
+      case '-': { const r = Math.max(0, this.cursor.row - n); return { row: r, col: this._firstNonBlank(r), linewise: true, inclusive: false }; }
       case '$': { const r = Math.min(this.buffer.length - 1, this.cursor.row + n - 1); return { row: r, col: Math.max(0, this.buffer[r].length - 1), linewise: false, inclusive: true }; }
       case '{': return this._motionPara(-1, n);
       case '}': return this._motionPara(1, n);
@@ -1179,6 +1185,11 @@ class VimEngine {
       case 's': { const l = this.buffer[this.cursor.row]; if (l.length && this.cursor.col < l.length) { this.register = l[this.cursor.col]; this.registerLinewise = false; this.buffer[this.cursor.row] = l.slice(0, this.cursor.col) + l.slice(this.cursor.col + 1); this._markDirty(); } this.mode = 'INSERT'; return; }
       case 'S': { const indent = this.buffer[this.cursor.row].match(/^(\s*)/)[1]; this.register = this.buffer[this.cursor.row]; this.registerLinewise = true; this.buffer[this.cursor.row] = indent; this.cursor.col = indent.length; this.mode = 'INSERT'; this._markDirty(); return; }
       case '~': { const l = this.buffer[this.cursor.row]; if (this.cursor.col < l.length) { const ch = l[this.cursor.col]; const t = ch === ch.toUpperCase() ? ch.toLowerCase() : ch.toUpperCase(); this.buffer[this.cursor.row] = l.slice(0, this.cursor.col) + t + l.slice(this.cursor.col + 1); this.cursor.col = Math.min(this.cursor.col + 1, Math.max(0, this.buffer[this.cursor.row].length - 1)); this._markDirty(); } return; }
+      case 'X': for (let i = 0; i < count; i++) { if (this.cursor.col > 0) { const l = this.buffer[this.cursor.row]; this.register = l[this.cursor.col - 1]; this.registerLinewise = false; this.buffer[this.cursor.row] = l.slice(0, this.cursor.col - 1) + l.slice(this.cursor.col); this.cursor.col--; this._markDirty(); } } return;
+      case 'Y': { this.register = this.buffer.slice(this.cursor.row, this.cursor.row + count).join('\n'); this.registerLinewise = true; return; }
+      case '#': this._searchWordUnderCursorBack(); return;
+      case 'Ctrl-d': { const half = Math.max(1, Math.floor(this.buffer.length / 2)); this.cursor.row = Math.min(this.buffer.length - 1, this.cursor.row + half); this.cursor.col = this._firstNonBlank(this.cursor.row); return; }
+      case 'Ctrl-u': { const half = Math.max(1, Math.floor(this.buffer.length / 2)); this.cursor.row = Math.max(0, this.cursor.row - half); this.cursor.col = this._firstNonBlank(this.cursor.row); return; }
       case 'Ctrl-a': this._incrementNumber(count); return;
       case 'Ctrl-x': this._incrementNumber(-count); return;
       case '*': this._searchWordUnderCursor(); return;
@@ -1261,6 +1272,17 @@ class VimEngine {
     this.searchPattern = '\\b' + line.slice(s, e + 1) + '\\b';
     this.searchDirection = 1;
     this._jumpToNextMatch(1);
+  }
+
+  _searchWordUnderCursorBack() {
+    const line = this.buffer[this.cursor.row];
+    let s = this.cursor.col, e = this.cursor.col;
+    if (!/[a-zA-Z0-9_]/.test(line[s] || '')) return;
+    while (s > 0 && /[a-zA-Z0-9_]/.test(line[s - 1])) s--;
+    while (e < line.length - 1 && /[a-zA-Z0-9_]/.test(line[e + 1])) e++;
+    this.searchPattern = '\\b' + line.slice(s, e + 1) + '\\b';
+    this.searchDirection = -1;
+    this._jumpToNextMatch(-1);
   }
 
   _playMacro(reg) {
@@ -1965,10 +1987,18 @@ class UIRenderer {
 
   _syntaxHL(line) {
     const r = {}, rules = [
-      { re: /\b(function|const|let|var|return|if|else|for|while|class|import|export|def|fn|pub|struct|async|await|new|true|false|null|None|self|this)\b/g, c: 'syn-kw' },
+      { re: /\/\/.*/g, c: 'syn-comment' },
+      { re: /#\s*(?:include|define|ifdef|ifndef|endif|pragma|if|elif|else|undef)\b.*/g, c: 'syn-preproc' },
       { re: /(["'`])(?:(?!\1|\\).|\\.)*\1/g, c: 'syn-str' },
-      { re: /\/\/.*/g, c: 'syn-comment' }, { re: /#.*/g, c: 'syn-comment' },
-      { re: /\b\d+\b/g, c: 'syn-num' },
+      { re: /<[a-zA-Z0-9_/.]+>/g, c: 'syn-str' },
+      { re: /\b(true|false|nullptr|NULL|None|nil)\b/g, c: 'syn-bool' },
+      { re: /\b(std|cout|cin|cerr|endl|string|vector|map|set|pair|array|list|queue|stack|deque|unordered_map|unordered_set|unique_ptr|shared_ptr|make_unique|make_shared|optional|variant|tuple|move|forward|begin|end|size|push_back|emplace_back|insert|erase|find|sort|swap|min|max|abs|pow|sqrt|printf|scanf|malloc|free|sizeof|static_cast|dynamic_cast|reinterpret_cast|const_cast)\b/g, c: 'syn-ns' },
+      { re: /\b(int|float|double|char|bool|void|long|short|unsigned|signed|size_t|auto|string|std::string|wchar_t|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|ptrdiff_t|ssize_t)\b/g, c: 'syn-type' },
+      { re: /\b(function|const|let|var|return|if|else|for|while|do|switch|case|break|continue|class|struct|enum|union|namespace|using|typedef|typename|template|public|private|protected|virtual|override|final|static|inline|constexpr|consteval|constinit|extern|mutable|volatile|explicit|friend|operator|throw|try|catch|noexcept|delete|new|import|export|def|fn|pub|async|await|self|this|super|yield|lambda|co_await|co_return|co_yield|concept|requires|module)\b/g, c: 'syn-kw' },
+      { re: /\b[a-zA-Z_]\w*(?=\s*\()/g, c: 'syn-func' },
+      { re: /\b\d+\.?\d*[fFuUlL]?\b/g, c: 'syn-num' },
+      { re: /0x[0-9a-fA-F]+/g, c: 'syn-num' },
+      { re: /#\w+/g, c: 'syn-preproc' },
     ];
     const used = new Set();
     for (const rule of rules) { let m; rule.re.lastIndex = 0; while ((m = rule.re.exec(line)) !== null) { let skip = false; for (let i = m.index; i < m.index + m[0].length; i++) if (used.has(i)) { skip = true; break; } if (skip) continue; for (let i = m.index; i < m.index + m[0].length; i++) { used.add(i); r[i] = `<span class="${rule.c}">${this._esc(line[i])}</span>`; } } }
@@ -2396,6 +2426,8 @@ class App {
     if (e.ctrlKey && e.key === 'x') return 'Ctrl-x';
     if (e.ctrlKey && e.key === 'v') return 'Ctrl-v';
     if (e.ctrlKey && e.key === 'r') return 'Ctrl-r';
+    if (e.ctrlKey && e.key === 'd') return 'Ctrl-d';
+    if (e.ctrlKey && e.key === 'u') return 'Ctrl-u';
     if (e.altKey && e.key === 'j') return 'Alt-j';
     if (e.altKey && e.key === 'k') return 'Alt-k';
     if (e.key === 'Escape') return 'Escape';
