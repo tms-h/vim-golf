@@ -514,7 +514,10 @@ class VimEngine {
     if (key === '/') { this.mode = 'COMMAND'; this.commandBuffer = ''; this._searchMode = true; this._searchForward = true; return; }
     if (key === '?') { this.mode = 'COMMAND'; this.commandBuffer = ''; this._searchMode = true; this._searchForward = false; return; }
 
-    const motion = this._tryMotion(key);
+    let motion = this._tryMotion(key);
+    if (motion && this.pending.operator === 'c' && (key === 'w' || key === 'W')) {
+      motion = this._tryMotion(key === 'w' ? 'e' : 'E');
+    }
     if (motion) {
       if (this.pending.operator) {
         this._applyOperator(this.pending.operator, this._motionToRange(motion));
@@ -1547,7 +1550,7 @@ class ProblemGenerator {
   _gen_change(d) {
     if (d <= 1) {
       const v = this._ri(0, 2);
-      if (v === 0) { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1), words = lines[row].match(/[a-zA-Z_]\w*/g); if (!words?.length) return null; const word = this._pick(words), col = lines[row].indexOf(word), nw = this._pick(this.varNames.filter(x => x !== word)); const eng = new VimEngine(); eng.loadBuffer(lines.map(l => l), { row, col }); ['c','i','w', ...nw.split(''), 'Escape'].forEach(k => eng.processKey(k)); return { initialBuffer: lines, cursorPos: { row, col }, targetBuffer: eng.buffer, description: `Change "${word}" to "${nw}"`, optimalKeystrokes: ['c','i','w', ...nw.split(''), 'Escape'], category: 'change', difficulty: 1 }; }
+      if (v === 0) { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1), words = lines[row].match(/[a-zA-Z_]\w*/g); if (!words?.length) return null; const word = this._pick(words), col = lines[row].indexOf(word), nw = this._pick(this.varNames.filter(x => x !== word)); const eng = new VimEngine(); eng.loadBuffer(lines.map(l => l), { row, col }); ['c','w', ...nw.split(''), 'Escape'].forEach(k => eng.processKey(k)); return { initialBuffer: lines, cursorPos: { row, col }, targetBuffer: eng.buffer, description: `Change "${word}" to "${nw}"`, optimalKeystrokes: ['c','w', ...nw.split(''), 'Escape'], category: 'change', difficulty: 1 }; }
       if (v === 1) { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1), col = this._ri(1, Math.max(1, Math.floor(lines[row].length / 2))), nt = this._pick(this.strLiterals); const target = [...lines]; target[row] = lines[row].slice(0, col) + nt; return { initialBuffer: lines, cursorPos: { row, col }, targetBuffer: target, description: `Change from cursor to end of line to "${nt}"`, optimalKeystrokes: ['C', ...nt.split(''), 'Escape'], category: 'change', difficulty: 1 }; }
       { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1); const eng = new VimEngine(); eng.loadBuffer(lines.map(l => l), { row, col: 0 }); const w = lines[row].match(/[a-zA-Z_]\w*/)?.[0]; if (!w) return null; const nw = this._pick(this.varNames.filter(x => x !== w)); ['c', 'w', ...nw.split(''), 'Escape'].forEach(k => eng.processKey(k)); return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: eng.buffer, description: `Change word forward to "${nw}"`, optimalKeystrokes: ['c','w', ...nw.split(''), 'Escape'], category: 'change', difficulty: 1 }; }
     }
@@ -1566,11 +1569,11 @@ class ProblemGenerator {
         const nv = this._pick(this.varNames.filter(x => x !== vn));
         const ns = this._pick(this.strLiterals.filter(x => x !== s));
         const eng = new VimEngine(); eng.loadBuffer([line], { row: 0, col: 0 });
-        ['c', 'i', 'w', ...nv.split(''), 'Escape'].forEach(k => eng.processKey(k));
+        ['c', 'w', ...nv.split(''), 'Escape'].forEach(k => eng.processKey(k));
         const afterWord = eng.buffer[0];
         eng.processKey('f'); eng.processKey('"');
         ['c', 'i', '"', ...ns.split(''), 'Escape'].forEach(k => eng.processKey(k));
-        return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(vn) }, targetBuffer: eng.buffer, description: `Change variable name and string value`, optimalKeystrokes: ['c','i','w', ...nv.split(''), 'Escape', 'f', '"', 'c','i','"', ...ns.split(''), 'Escape'], category: 'change', difficulty: 3 };
+        return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(vn) }, targetBuffer: eng.buffer, description: `Change variable name and string value`, optimalKeystrokes: ['c','w', ...nv.split(''), 'Escape', 'f', '"', 'c','i','"', ...ns.split(''), 'Escape'], category: 'change', difficulty: 3 };
       }
       { const fn = this._pick(this.funcNames), [k1, k2] = this._pickN(this.varNames, 2); const line = `${fn}({${k1}: 0, ${k2}: 1})`; const nb = this._pick(this.varNames); return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf('{') + 1 }, targetBuffer: [`${fn}({${nb}})`], description: 'Change inside the curly braces', optimalKeystrokes: ['c','i','{', ...nb.split(''), 'Escape'], category: 'change', difficulty: 3 }; }
     }
@@ -1582,8 +1585,8 @@ class ProblemGenerator {
         const line = `function ${fn}(${p1}, ${p2}) {`;
         const nfn = this._pick(this.funcNames.filter(x => x !== fn));
         const eng = new VimEngine(); eng.loadBuffer([line], { row: 0, col: line.indexOf(fn) });
-        ['c', 'i', 'w', ...nfn.split(''), 'Escape'].forEach(k => eng.processKey(k));
-        return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(fn) }, targetBuffer: eng.buffer, description: `Rename function "${fn}" to "${nfn}"`, optimalKeystrokes: ['c','i','w', ...nfn.split(''), 'Escape'], category: 'change', difficulty: 4 };
+        ['c', 'w', ...nfn.split(''), 'Escape'].forEach(k => eng.processKey(k));
+        return { initialBuffer: [line], cursorPos: { row: 0, col: line.indexOf(fn) }, targetBuffer: eng.buffer, description: `Rename function "${fn}" to "${nfn}"`, optimalKeystrokes: ['c','w', ...nfn.split(''), 'Escape'], category: 'change', difficulty: 4 };
       }
       {
         const lines = this._simpleLines(), row = this._ri(0, lines.length - 1);
@@ -1605,8 +1608,8 @@ class ProblemGenerator {
         const ns2 = this._pick(this.strLiterals.filter(x => x !== s1 && x !== s2 && x !== ns1));
         const lines = [`function ${fn}(${v1}) {`, `  return "${s1}";`, `}`];
         const eng = new VimEngine(); eng.loadBuffer(lines.map(l=>l), {row:0, col:0});
-        ['w', 'c', 'i', 'w', ...nfn.split(''), 'Escape', 'j', 'f', '"', 'c', 'i', '"', ...ns1.split(''), 'Escape'].forEach(k => eng.processKey(k));
-        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: eng.buffer, description: `Rename function to "${nfn}" and change string to "${ns1}"`, optimalKeystrokes: ['w', 'c', 'i', 'w', ...nfn.split(''), 'Escape', 'j', 'f', '"', 'c', 'i', '"', ...ns1.split(''), 'Escape'], category: 'change', difficulty: 5 };
+        ['w', 'c', 'w', ...nfn.split(''), 'Escape', 'j', 'f', '"', 'c', 'i', '"', ...ns1.split(''), 'Escape'].forEach(k => eng.processKey(k));
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: eng.buffer, description: `Rename function to "${nfn}" and change string to "${ns1}"`, optimalKeystrokes: ['w', 'c', 'w', ...nfn.split(''), 'Escape', 'j', 'f', '"', 'c', 'i', '"', ...ns1.split(''), 'Escape'], category: 'change', difficulty: 5 };
       }
       if (v === 1) {
         // Change two variable names on different lines using * and dot repeat
@@ -1614,9 +1617,9 @@ class ProblemGenerator {
         const other = this._pick(this.varNames.filter(x => x !== vn && x !== nv));
         const lines = [`let ${vn} = 0;`, `let ${other} = ${vn};`, `return ${vn};`];
         const eng = new VimEngine(); eng.loadBuffer(lines.map(l=>l), {row:0, col:0});
-        ['w', 'c', 'i', 'w', ...nv.split(''), 'Escape'].forEach(k => eng.processKey(k));
+        ['w', 'c', 'w', ...nv.split(''), 'Escape'].forEach(k => eng.processKey(k));
         const target = [...lines]; target[0] = `let ${nv} = 0;`;
-        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Change the first "${vn}" to "${nv}" (first word after let)`, optimalKeystrokes: ['w', 'c', 'i', 'w', ...nv.split(''), 'Escape'], category: 'change', difficulty: 5 };
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: `Change the first "${vn}" to "${nv}" (first word after let)`, optimalKeystrokes: ['w', 'c', 'w', ...nv.split(''), 'Escape'], category: 'change', difficulty: 5 };
       }
       if (v === 2) {
         // Replace entire line content and add new line below
@@ -1754,12 +1757,10 @@ class ProblemGenerator {
     {
       const v = this._ri(0, 2);
       if (v === 0) {
-        // Yank line 1, paste at end, then move line 2 to end as well
+        // Duplicate first line to both top and bottom
         const lines = this._simpleLines(); if (lines.length < 3) return null;
-        const target = [lines[0], lines[2], lines[0], lines[1]];
-        const eng = new VimEngine(); eng.loadBuffer(lines.map(l=>l), {row:0, col:0});
-        ['y','y','G','p','2','G','d','d','G','p'].forEach(k => eng.processKey(k));
-        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: eng.buffer, description: 'Copy line 1 to end, then move line 2 to end', optimalKeystrokes: ['y','y','G','p','2','G','d','d','G','p'], category: 'yank', difficulty: d };
+        const target = [lines[0], ...lines, lines[0]];
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Duplicate first line above and below all lines', optimalKeystrokes: ['y','y','P','G','p'], category: 'yank', difficulty: d };
       }
       if (v === 1) {
         // Yank 2 lines, delete the originals, paste them at end
@@ -1772,7 +1773,7 @@ class ProblemGenerator {
         const lines = this._simpleLines(); if (lines.length < 3) return null;
         const last = lines[lines.length - 1];
         const target = [last, ...lines];
-        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Copy last line and paste it above line 1', optimalKeystrokes: ['G','y','y','g','g','P'], category: 'yank', difficulty: d };
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Copy last line and paste it above line 1', optimalKeystrokes: ['G','Y','g','g','P'], category: 'yank', difficulty: d };
       }
     }
   }
@@ -1939,7 +1940,7 @@ class ProblemGenerator {
       if (v === 0) {
         // Reverse 3 lines: requires multiple moves
         const lines = this._simpleLines(); if (lines.length < 3) return null;
-        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: [...lines].reverse(), description: 'Reverse the order of all 3 lines', optimalKeystrokes: ['d','d','G','p','k','d','d','g','g','P'], category: 'compound', difficulty: 5 };
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: [...lines].reverse(), description: 'Reverse the order of all 3 lines', optimalKeystrokes: ['d','d','p','G','d','d','g','g','P'], category: 'compound', difficulty: 5 };
       }
       if (v === 1) {
         // Comment out function body + change function name
@@ -1948,8 +1949,8 @@ class ProblemGenerator {
         const lines = [`function ${fn}() {`, ...words.map(w => `  let ${w} = 0;`), `}`];
         const jc = n - 1;
         const eng = new VimEngine(); eng.loadBuffer(lines.map(l=>l), {row:0, col:0});
-        ['w', 'c', 'i', 'w', ...nfn.split(''), 'Escape', 'j', 'g', 'c', ...String(jc).split(''), 'j'].forEach(k => eng.processKey(k));
-        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: eng.buffer, description: `Rename function to "${nfn}" and comment out body`, optimalKeystrokes: ['w', 'c', 'i', 'w', ...nfn.split(''), 'Escape', 'j', 'g', 'c', ...String(jc).split(''), 'j'], category: 'compound', difficulty: 5 };
+        ['w', 'c', 'w', ...nfn.split(''), 'Escape', 'j', 'g', 'c', ...String(jc).split(''), 'j'].forEach(k => eng.processKey(k));
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: eng.buffer, description: `Rename function to "${nfn}" and comment out body`, optimalKeystrokes: ['w', 'c', 'w', ...nfn.split(''), 'Escape', 'j', 'g', 'c', ...String(jc).split(''), 'j'], category: 'compound', difficulty: 5 };
       }
       if (v === 2) {
         // Delete middle line, change string on remaining line, add comment at top
@@ -1968,8 +1969,8 @@ class ProblemGenerator {
         const nk = this._pick(this.varNames.filter(x => x !== v3));
         const lines = [`let ${v1} = 0;`, `let ${v2} = 1;`, `const ${v3} = 2;`];
         const eng = new VimEngine(); eng.loadBuffer(lines.map(l=>l), {row:0, col:0});
-        ['G', 'd', 'd', 'g', 'g', 'P', 'w', 'c', 'i', 'w', ...nk.split(''), 'Escape'].forEach(k => eng.processKey(k));
-        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: eng.buffer, description: `Move last line to top, then rename "${v3}" to "${nk}"`, optimalKeystrokes: ['G', 'd', 'd', 'g', 'g', 'P', 'w', 'c', 'i', 'w', ...nk.split(''), 'Escape'], category: 'compound', difficulty: 5 };
+        ['G', 'd', 'd', 'g', 'g', 'P', 'w', 'c', 'w', ...nk.split(''), 'Escape'].forEach(k => eng.processKey(k));
+        return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: eng.buffer, description: `Move last line to top, then rename "${v3}" to "${nk}"`, optimalKeystrokes: ['G', 'd', 'd', 'g', 'g', 'P', 'w', 'c', 'w', ...nk.split(''), 'Escape'], category: 'compound', difficulty: 5 };
       }
       {
         // Duplicate first line below, then change string on original, then delete last line
@@ -2069,8 +2070,8 @@ class ProblemGenerator {
         const lines = [`let ${word} = 0;`, `${word} += 1;`, `return ${word};`];
         const col = lines[0].indexOf(word);
         const eng = new VimEngine(); eng.loadBuffer(lines.map(l=>l), {row:0, col});
-        ['*', 'c', 'i', 'w', ...'x'.split(''), 'Escape'].forEach(k => eng.processKey(k));
-        return { initialBuffer: lines, cursorPos: { row: 0, col }, targetBuffer: eng.buffer, description: `Search for "${word}" and change the next occurrence`, optimalKeystrokes: ['*', 'c', 'i', 'w', 'x', 'Escape'], category: 'search', difficulty: 3 };
+        ['*', 'c', 'w', ...'x'.split(''), 'Escape'].forEach(k => eng.processKey(k));
+        return { initialBuffer: lines, cursorPos: { row: 0, col }, targetBuffer: eng.buffer, description: `Search for "${word}" and change the next occurrence`, optimalKeystrokes: ['*', 'c', 'w', 'x', 'Escape'], category: 'search', difficulty: 3 };
       }
       { const kw = this._pick(['const','let','return','function']); const lines = this._jsSnippet(); let tr = -1, tc = -1; for (let r = 1; r < lines.length; r++) { const idx = lines[r].indexOf(kw); if (idx >= 0) { tr = r; tc = idx; break; } } if (tr < 0) return null; return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: lines, targetCursorPos: { row: tr, col: tc }, description: `Search forward for "${kw}"`, optimalKeystrokes: ['/', ...kw.split(''), 'Enter'], category: 'search', difficulty: 3 }; }
     }
@@ -2081,8 +2082,8 @@ class ProblemGenerator {
         const lines = [`let ${word} = 0;`, `${word} += 1;`, `return ${word};`];
         const target = [`let ${word} = 0;`, `${nw} += 1;`, `return ${word};`];
         const eng = new VimEngine(); eng.loadBuffer(lines.map(l=>l), {row:0, col: lines[0].indexOf(word)});
-        ['*', 'c', 'i', 'w', ...nw.split(''), 'Escape'].forEach(k => eng.processKey(k));
-        return { initialBuffer: lines, cursorPos: { row: 0, col: lines[0].indexOf(word) }, targetBuffer: eng.buffer, description: `Jump to next "${word}" and replace with "${nw}"`, optimalKeystrokes: ['*', 'c', 'i', 'w', ...nw.split(''), 'Escape'], category: 'search', difficulty: 4 };
+        ['*', 'c', 'w', ...nw.split(''), 'Escape'].forEach(k => eng.processKey(k));
+        return { initialBuffer: lines, cursorPos: { row: 0, col: lines[0].indexOf(word) }, targetBuffer: eng.buffer, description: `Jump to next "${word}" and replace with "${nw}"`, optimalKeystrokes: ['*', 'c', 'w', ...nw.split(''), 'Escape'], category: 'search', difficulty: 4 };
       }
       {
         const word = this._pick(this.varNames);
@@ -2193,7 +2194,7 @@ class ProblemGenerator {
     if (d === 2) {
       const v = this._ri(0, 1);
       if (v === 0) { const lines = this._simpleLines(); const target = [...lines]; target.splice(1, 0, lines[0]); return { initialBuffer: lines, cursorPos: { row: 0, col: 0 }, targetBuffer: target, description: 'Yank line into register "a" and paste below', optimalKeystrokes: ['"', 'a', 'y', 'y', '"', 'a', 'p'], category: 'registers', difficulty: 2 }; }
-      { const lines = this._simpleLines(); if (lines.length < 3) return null; const w = lines[0].match(/[a-zA-Z_]\w*/)?.[0]; if (!w) return null; const col = lines[0].indexOf(w); const target = [...lines]; const last = target.length - 1; const m2 = target[last].match(/[a-zA-Z_]\w*/); if (!m2) return null; target[last] = target[last].slice(0, target[last].indexOf(m2[0])) + w + target[last].slice(target[last].indexOf(m2[0]) + m2[0].length); const eng = new VimEngine(); eng.loadBuffer(lines.map(l=>l), {row:0, col}); ['"','a','y','i','w','G'].forEach(k => eng.processKey(k)); const m3 = lines[last].match(/[a-zA-Z_]\w*/); const tc = lines[last].indexOf(m3[0]); eng.cursor.col = tc; ['c','i','w'].forEach(k => eng.processKey(k)); eng.processKey('Ctrl-r'); eng.processKey('a'); eng.processKey('Escape'); return { initialBuffer: lines, cursorPos: { row: 0, col }, targetBuffer: eng.buffer, description: `Yank word to register, paste it on last line`, optimalKeystrokes: ['"','a','y','i','w','G', ...String(tc + 1).split(''), '|', 'c','i','w','Ctrl-r','a','Escape'], category: 'registers', difficulty: 2 }; }
+      { const lines = this._simpleLines(); if (lines.length < 3) return null; const w = lines[0].match(/[a-zA-Z_]\w*/)?.[0]; if (!w) return null; const col = lines[0].indexOf(w); const target = [...lines]; const last = target.length - 1; const m2 = target[last].match(/[a-zA-Z_]\w*/); if (!m2) return null; target[last] = target[last].slice(0, target[last].indexOf(m2[0])) + w + target[last].slice(target[last].indexOf(m2[0]) + m2[0].length); const eng = new VimEngine(); eng.loadBuffer(lines.map(l=>l), {row:0, col}); ['"','a','y','i','w','G'].forEach(k => eng.processKey(k)); const m3 = lines[last].match(/[a-zA-Z_]\w*/); const tc = lines[last].indexOf(m3[0]); eng.cursor.col = tc; ['c','w'].forEach(k => eng.processKey(k)); eng.processKey('Ctrl-r'); eng.processKey('a'); eng.processKey('Escape'); return { initialBuffer: lines, cursorPos: { row: 0, col }, targetBuffer: eng.buffer, description: `Yank word to register, paste it on last line`, optimalKeystrokes: ['"','a','y','i','w','G', ...String(tc + 1).split(''), '|', 'c','w','Ctrl-r','a','Escape'], category: 'registers', difficulty: 2 }; }
     }
     if (d === 3) {
       const v = this._ri(0, 1);
