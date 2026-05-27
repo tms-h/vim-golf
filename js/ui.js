@@ -156,7 +156,7 @@ export class UIRenderer {
     const rec = engine.macroRecording ? ` recording @${engine.macroRecording}` : '';
     const hints = {
       NORMAL: `Tab→skip  :q→quit  Ctrl-g→solution  i a o  d c y  w b e f  / * n  q @  m '  gcc${rec}`,
-      INSERT: 'type to insert · Esc or jk → normal · Alt-j/k move lines',
+      INSERT: 'type to insert · Esc or jk → normal · Ctrl-j/k move lines',
       VISUAL: 'd c y > <  motions extend · Esc → normal',
       VISUAL_LINE: 'd c y > <  j k extend · Esc → normal',
       VISUAL_BLOCK: 'd c y  I A  motions extend · Esc → normal',
@@ -164,6 +164,21 @@ export class UIRenderer {
       COMMAND: 'type command · Enter execute · Esc cancel'
     };
     this.el('mode-hints').textContent = hints[mode] || '';
+  }
+
+  _diffLines(src, dst) {
+    const n = src.length, m = dst.length;
+    const dp = Array.from({length: n + 1}, () => new Uint16Array(m + 1));
+    for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) dp[i][j] = src[i-1] === dst[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+    const result = new Array(m);
+    let i = n, j = m;
+    while (j > 0) {
+      if (i > 0 && src[i-1] === dst[j-1]) { result[j-1] = 'same'; i--; j--; }
+      else if (i > 0 && dp[i-1][j] >= dp[i][j-1]) { i--; }
+      else { result[j-1] = 'added'; j--; }
+    }
+    for (let k = 0; k < m; k++) if (!result[k]) result[k] = 'added';
+    return result;
   }
 
   _renderBuffer(container, buffer, cursor, visualRange, targetCursor, diffAgainst, searchHL) {
@@ -180,16 +195,14 @@ export class UIRenderer {
         }
       }
     }
+    const diffMap = diffAgainst ? this._diffLines(diffAgainst, buffer) : null;
     for (let row = 0; row < buffer.length; row++) {
       const line = buffer[row], ln = `<span class="line-num">${String(row + 1).padStart(2)}</span>`;
       const hl = this._syntaxHL(line);
       let chars = '';
       const maxCol = cursor ? line.length : line.length - 1;
       let lineCls = 'editor-line';
-      if (diffAgainst) {
-        if (row >= diffAgainst.length) lineCls += ' target-line-added';
-        else if (diffAgainst[row] !== line) lineCls += ' target-line-diff';
-      }
+      if (diffMap && diffMap[row] === 'added') lineCls += ' target-line-diff';
       const rowInserts = subInserts[row] || [];
       for (let col = 0; col <= maxCol; col++) {
         const ch = col < line.length ? this._esc(line[col]) : ' ';

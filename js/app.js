@@ -268,8 +268,8 @@ export class App {
     if (e.ctrlKey && e.key === 'g') return 'Ctrl-g';
     if (e.ctrlKey && e.key === 'w') return 'Ctrl-w';
     if (e.ctrlKey && e.key === 'h') return 'Ctrl-h';
-    if (e.altKey && e.key === 'j') return 'Alt-j';
-    if (e.altKey && e.key === 'k') return 'Alt-k';
+    if (e.ctrlKey && e.key === 'j') return 'Ctrl-j';
+    if (e.ctrlKey && e.key === 'k') return 'Ctrl-k';
     if (e.key === 'Escape') return 'Escape';
     if (e.key === 'Enter') return 'Enter';
     if (e.key === 'Backspace') return 'Backspace';

@@ -251,8 +251,8 @@ export class VimEngine {
       }
     }
 
-    if (key === 'Alt-j') { this._moveLineDown(); this._markDirty(); return; }
-    if (key === 'Alt-k') { this._moveLineUp(); this._markDirty(); return; }
+    if (key === 'Ctrl-j') { this._moveLineDown(); this._markDirty(); return; }
+    if (key === 'Ctrl-k') { this._moveLineUp(); this._markDirty(); return; }
 
     // Ctrl-h: alias for Backspace
     if (key === 'Ctrl-h') {
@@ -427,8 +427,8 @@ export class VimEngine {
     if (key === 'o' && this.visualAnchor) {
       const tmp = { ...this.cursor }; this.cursor = { ...this.visualAnchor }; this.visualAnchor = tmp; return;
     }
-    if (key === 'Alt-j') { this._moveLineDown(); this._markDirty(); return; }
-    if (key === 'Alt-k') { this._moveLineUp(); this._markDirty(); return; }
+    if (key === 'Ctrl-j') { this._moveLineDown(); this._markDirty(); return; }
+    if (key === 'Ctrl-k') { this._moveLineUp(); this._markDirty(); return; }
 
     const motion = this._tryMotion(key);
     if (motion) { this.cursor = { row: motion.row, col: motion.col }; this._clampCursor(); }
@@ -1065,8 +1065,8 @@ export class VimEngine {
       case 'Ctrl-a': this._incrementNumber(count); return;
       case 'Ctrl-x': this._incrementNumber(-count); return;
       case '*': this._searchWordUnderCursor(); return;
-      case 'Alt-j': for (let i = 0; i < count; i++) this._moveLineDown(); this._markDirty(); return;
-      case 'Alt-k': for (let i = 0; i < count; i++) this._moveLineUp(); this._markDirty(); return;
+      case 'Ctrl-j': for (let i = 0; i < count; i++) this._moveLineDown(); this._markDirty(); return;
+      case 'Ctrl-k': for (let i = 0; i < count; i++) this._moveLineUp(); this._markDirty(); return;
     }
   }
 

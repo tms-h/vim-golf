@@ -375,8 +375,8 @@ export class ProblemGenerator {
     if (d <= 1) {
       const v = this._ri(0, 2);
       if (v === 0) { const lines = this._simpleLines(), row = this._ri(0, lines.length - 1); const target = [...lines]; target.splice(row + 1, 0, lines[row]); return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: 'Duplicate the current line below', optimalKeystrokes: ['y','y','p'], category: 'yank', difficulty: 1 }; }
-      if (v === 1) { const lines = this._simpleLines(); if (lines.length < 2) return null; const row = this._ri(0, lines.length - 2); const target = [...lines]; [target[row], target[row + 1]] = [target[row + 1], target[row]]; return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: 'Move this line down one', optimalKeystrokes: ['Alt-j'], category: 'yank', difficulty: 1 }; }
-      { const lines = this._simpleLines(); if (lines.length < 2) return null; const row = this._ri(1, lines.length - 1); const target = [...lines]; [target[row], target[row - 1]] = [target[row - 1], target[row]]; return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: 'Move this line up one', optimalKeystrokes: ['Alt-k'], category: 'yank', difficulty: 1 }; }
+      if (v === 1) { const lines = this._simpleLines(); if (lines.length < 2) return null; const row = this._ri(0, lines.length - 2); const target = [...lines]; [target[row], target[row + 1]] = [target[row + 1], target[row]]; return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: 'Move this line down one', optimalKeystrokes: ['Ctrl-j'], category: 'yank', difficulty: 1 }; }
+      { const lines = this._simpleLines(); if (lines.length < 2) return null; const row = this._ri(1, lines.length - 1); const target = [...lines]; [target[row], target[row - 1]] = [target[row - 1], target[row]]; return { initialBuffer: lines, cursorPos: { row, col: 0 }, targetBuffer: target, description: 'Move this line up one', optimalKeystrokes: ['Ctrl-k'], category: 'yank', difficulty: 1 }; }
     }
     if (d <= 3) {
       const lines = this._simpleLines(); if (lines.length < 2) return null;
