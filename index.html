@@ -73,7 +73,7 @@ html, body {
 .help-close { font-size: .68rem; color: var(--faint); text-align: center; margin-top: 12px; }
 
 /* ── Game ──────────────────────────────── */
-#screen-game { padding: 8px 20px; gap: 4px; }
+#screen-game { padding: 8px 20px; gap: 4px; position: relative; }
 #game-header {
   display: flex; justify-content: space-between; align-items: center;
   font-size: .8rem; color: var(--muted); min-height: 28px; flex-shrink: 0;
@@ -98,6 +98,11 @@ html, body {
 .syn-type { color: #9ccfd8; } .syn-func { color: #eb6f92; }
 .syn-op { color: #e0def4; font-weight: bold; } .syn-preproc { color: #c4a7e7; font-style: italic; }
 .syn-bool { color: #eb6f92; } .syn-ns { color: #9ccfd8; }
+.replay-overlay { position: absolute; bottom: 60px; left: 0; right: 0; text-align: center; padding: 12px; background: rgba(25, 23, 36, 0.95); border-top: 1px solid var(--border); }
+.replay-bar { font-family: var(--font); font-size: 14px; color: var(--text); margin-bottom: 6px; }
+.replay-key { color: var(--accent); } .replay-key-current { color: var(--correct); font-weight: bold; }
+.replay-counter { color: var(--faint); margin-left: 8px; }
+.replay-hint { font-size: 12px; color: var(--faint); }
 .target-editor { opacity: .5; }
 .target-line-diff { border-left: 2px solid var(--accent); padding-left: 4px; opacity: 1; }
 
@@ -365,6 +370,16 @@ class VimEngine {
       this._dotActive = false;
       this._undoCheckpoint = null;
     }
+
+    if (this._insertOneShotArmed && this.mode === 'NORMAL') {
+      this._insertOneShotArmed = false;
+      this._insertOneShot = true;
+    } else if (this._insertOneShot && this.mode === 'NORMAL' &&
+        this.pending.count === '' && !this.pending.operator &&
+        !this.pending.awaitingChar && !this.pending.g) {
+      this._insertOneShot = false;
+      this.mode = 'INSERT';
+    }
   }
 
   _markDirty() {
@@ -508,6 +523,7 @@ class VimEngine {
   // ── Insert Mode ─────────────────────────────────────────
   _handleInsert(key) {
     if (key === 'Escape') { this._exitInsert(); return; }
+    if (key === 'Ctrl-o') { this._insertOneShotArmed = true; this.mode = 'NORMAL'; return; }
 
     if (this._insertJPending) {
       this._insertJPending = false;
@@ -1869,6 +1885,15 @@ class UIRenderer {
       });
       html += '<div class="term-back">Esc &larr; back</div>';
       menu.innerHTML = html;
+    } else if (submenu.startsWith('practice-diff:')) {
+      const cat = submenu.split(':')[1];
+      menu.innerHTML = `
+        <div class="term-label">${cat}</div>
+        <div class="term-item term-sub" data-action="pdiff-${cat}-1"><span class="term-key">[1]</span> beginner (d1-2)</div>
+        <div class="term-item term-sub" data-action="pdiff-${cat}-2"><span class="term-key">[2]</span> intermediate (d3)</div>
+        <div class="term-item term-sub" data-action="pdiff-${cat}-3"><span class="term-key">[3]</span> advanced (d4-5)</div>
+        <div class="term-item term-sub" data-action="pdiff-${cat}-0"><span class="term-key">[4]</span> all difficulties</div>
+        <div class="term-back">Esc &larr; back</div>`;
     }
     this.el('term-tip').textContent = '// tip: ' + VIM_TIPS[Math.floor(Math.random() * VIM_TIPS.length)];
   }
@@ -1892,7 +1917,14 @@ class UIRenderer {
       <div class="help-section">
         <div class="help-heading">Game</div>
         <div class="help-row"><span class="hk">Tab</span> skip problem</div>
+        <div class="help-row"><span class="hk">Ctrl-g</span> show solution replay</div>
         <div class="help-row"><span class="hk">Esc / q</span> end session</div>
+      </div>
+      <div class="help-section">
+        <div class="help-heading">Solution Replay</div>
+        <div class="help-row"><span class="hk">Enter</span> step through</div>
+        <div class="help-row"><span class="hk">Space</span> auto-play</div>
+        <div class="help-row"><span class="hk">Esc</span> exit replay</div>
       </div>
       <div class="help-section">
         <div class="help-heading">Results</div>
@@ -1903,6 +1935,8 @@ class UIRenderer {
       <div class="help-section">
         <div class="help-heading">Stats</div>
         <div class="help-row"><span class="hk">Esc / q</span> back</div>
+        <div class="help-row"><span class="hk">e</span> export data</div>
+        <div class="help-row"><span class="hk">i</span> import data</div>
       </div>
       <div class="help-close">press ? or Esc to close</div>
     </div>`;
@@ -1943,7 +1977,7 @@ class UIRenderer {
 
     const rec = engine.macroRecording ? ` recording @${engine.macroRecording}` : '';
     const hints = {
-      NORMAL: `Tab→skip  Esc→quit  i a o  d c y  w b e f  / * n  q @  m '${rec}`,
+      NORMAL: `Tab→skip  Esc→quit  Ctrl-g→solution  i a o  d c y  w b e f  / * n  q @  m '${rec}`,
       INSERT: 'type to insert · Esc or jk → normal · Alt-j/k move lines',
       VISUAL: 'd c y > <  motions extend · Esc → normal',
       VISUAL_LINE: 'd c y > <  j k extend · Esc → normal',
@@ -2216,6 +2250,20 @@ class UIRenderer {
     }
     html += `</div>`;
 
+    // Command Frequency
+    const cmdFreq = o.commandFrequency || {};
+    const topCmds = Object.entries(cmdFreq).sort((a, b) => b[1] - a[1]).slice(0, 20);
+    if (topCmds.length > 0) {
+      const maxFreq = topCmds[0][1];
+      html += `<div class="stats-section"><div class="stats-section-title">Most Used Commands</div><div style="display:flex;flex-wrap:wrap;gap:6px;">`;
+      for (const [cmd, count] of topCmds) {
+        const pct = Math.round((count / maxFreq) * 100);
+        const esc = cmd.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        html += `<div style="background:rgba(196,167,231,${Math.max(0.15, pct / 100)});padding:3px 8px;border-radius:4px;font-family:var(--font);font-size:12px;"><span style="color:var(--accent);font-weight:bold;">${esc}</span> <span style="color:var(--faint);">${count}</span></div>`;
+      }
+      html += `</div></div>`;
+    }
+
     // Session History
     const histSessions = [...recent].reverse().slice(0, 30);
     if (histSessions.length > 0) {
@@ -2300,12 +2348,13 @@ class App {
       else if (action === 'help') { this.helpVisible = true; this.renderer.renderHelp(true); }
       else if (action.startsWith('timed-')) { this._startSession('timed', action.split('-')[1]); }
       else if (action.startsWith('count-')) { this._startSession('count', action.split('-')[1]); }
-      else if (action.startsWith('practice-')) { this._startSession('practice', action.replace('practice-', '')); }
+      else if (action.startsWith('pdiff-')) { const parts = action.split('-'); const cat = parts.slice(1, -1).join('-'); const dl = parseInt(parts[parts.length - 1]); const ranges = { 1: [1, 2], 2: [3], 3: [4, 5], 0: null }; this._startSession('practice', cat, ranges[dl]); }
+      else if (action.startsWith('practice-')) { const cat = action.replace('practice-', ''); this.startSubmenu = 'practice-diff:' + cat; this._practiceDiffCat = cat; this.renderer.renderStartMenu('practice-diff:' + cat, this.practiceCategories); }
     });
   }
 
-  _startSession(mode, val) {
-    this.sessionMode = mode; this.sessionVal = val;
+  _startSession(mode, val, diffRange) {
+    this.sessionMode = mode; this.sessionVal = val; this.practiceDiffRange = diffRange || null;
     this.sessionProblems = []; this.optimalStreak = 0; this.state = 'PLAYING';
     this.startSubmenu = null;
     this.currentDifficulty = 1;
@@ -2329,7 +2378,12 @@ class App {
     this.renderer.hideInlineFeedback();
     let difficulty;
     if (this.sessionMode === 'practice') {
-      difficulty = null;
+      if (this.practiceDiffRange) {
+        const range = this.practiceDiffRange;
+        difficulty = range[Math.floor(Math.random() * range.length)];
+      } else {
+        difficulty = null;
+      }
     } else {
       const bump = Math.floor(this.optimalStreak / 3);
       difficulty = Math.min(5, this.currentDifficulty + bump);
@@ -2348,6 +2402,7 @@ class App {
       case 'STATS': this._handleStatsKey(e); return;
       case 'RESULTS': this._handleResultsKey(e); return;
       case 'PLAYING': this._handlePlayingKey(e); return;
+      case 'REPLAY': this._handleReplayKey(e); return;
       case 'FEEDBACK': e.preventDefault(); this._dismissFeedback(); return;
     }
   }
@@ -2366,7 +2421,10 @@ class App {
       if (key === '?') { e.preventDefault(); this.helpVisible = true; this.renderer.renderHelp(true); return; }
     } else {
       e.preventDefault();
-      if (key === 'Escape') { this.startSubmenu = null; this.renderer.renderStartMenu(null, this.practiceCategories); return; }
+      if (key === 'Escape') {
+        if (this.startSubmenu && this.startSubmenu.startsWith('practice-diff:')) { this.startSubmenu = 'practice'; this.renderer.renderStartMenu('practice', this.practiceCategories); return; }
+        this.startSubmenu = null; this.renderer.renderStartMenu(null, this.practiceCategories); return;
+      }
       if (this.startSubmenu === 'timed') {
         if (key === '1') { this._startSession('timed', '30'); return; }
         if (key === '2') { this._startSession('timed', '60'); return; }
@@ -2379,7 +2437,14 @@ class App {
       }
       if (this.startSubmenu === 'practice') {
         const cat = this.practiceKeys[key];
-        if (cat) { this._startSession('practice', cat); return; }
+        if (cat) { this.startSubmenu = 'practice-diff:' + cat; this._practiceDiffCat = cat; this.renderer.renderStartMenu('practice-diff:' + cat, this.practiceCategories); return; }
+      }
+      if (this.startSubmenu && this.startSubmenu.startsWith('practice-diff:')) {
+        const cat = this._practiceDiffCat;
+        if (key === '1') { this._startSession('practice', cat, [1, 2]); return; }
+        if (key === '2') { this._startSession('practice', cat, [3]); return; }
+        if (key === '3') { this._startSession('practice', cat, [4, 5]); return; }
+        if (key === '4') { this._startSession('practice', cat, null); return; }
       }
     }
   }
@@ -2391,6 +2456,35 @@ class App {
       this.startSubmenu = null;
       this.renderer.renderStartMenu(null, this.practiceCategories);
       this.renderer.showScreen('start');
+    }
+    if (e.key === 'e') {
+      e.preventDefault();
+      const json = this.stats.exportData();
+      const blob = new Blob([json], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'vim-golf-stats.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+    if (e.key === 'i') {
+      e.preventDefault();
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json';
+      input.onchange = () => {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            this.stats.importData(reader.result);
+            this.renderer.renderStats(this.stats.getOverview());
+          } catch (err) { console.error('Import failed:', err); }
+        };
+        reader.readAsText(file);
+      };
+      input.click();
     }
   }
 
@@ -2414,6 +2508,10 @@ class App {
       this._endSession(); return;
     }
 
+    if (key === 'Ctrl-g' && this.engine.mode === 'NORMAL' && !this.engine.pending.operator && !this.engine.pending.awaitingChar) {
+      this._showSolutionReplay(); return;
+    }
+
     this.userKeystrokes.push(key);
     this.stats.recordCommand(key);
     this.engine.processKey(key);
@@ -2428,6 +2526,8 @@ class App {
     if (e.ctrlKey && e.key === 'r') return 'Ctrl-r';
     if (e.ctrlKey && e.key === 'd') return 'Ctrl-d';
     if (e.ctrlKey && e.key === 'u') return 'Ctrl-u';
+    if (e.ctrlKey && e.key === 'o') return 'Ctrl-o';
+    if (e.ctrlKey && e.key === 'g') return 'Ctrl-g';
     if (e.altKey && e.key === 'j') return 'Alt-j';
     if (e.altKey && e.key === 'k') return 'Alt-k';
     if (e.key === 'Escape') return 'Escape';
@@ -2472,6 +2572,72 @@ class App {
     }
   }
 
+  _showSolutionReplay() {
+    this.state = 'REPLAY';
+    const problem = this.currentProblem;
+    const keys = problem.optimalKeystrokes;
+    this._replayEngine = new VimEngine();
+    this._replayEngine.loadBuffer(problem.initialBuffer.map(l => l), { ...problem.cursorPos });
+    this._replayStep = 0;
+    this._replayKeys = keys;
+    this._replayKeysShown = [];
+    this._renderReplay();
+  }
+
+  _renderReplay() {
+    const shown = this._replayKeysShown;
+    const total = this._replayKeys.length;
+    const step = this._replayStep;
+    const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const keyDisplay = shown.map((k, i) => `<span class="${i === shown.length - 1 ? 'replay-key-current' : 'replay-key'}">${esc(k)}</span>`).join(' ');
+    const info = `<div class="replay-bar">Solution: ${keyDisplay} <span class="replay-counter">${step}/${total}</span></div><div class="replay-hint">Enter &rarr; step &nbsp; Space &rarr; play all &nbsp; Esc &rarr; skip</div>`;
+    const eng = this._replayEngine;
+    const timer = this.sessionMode === 'timed' ? `${this.timeRemaining}s` : '';
+    const counter = `#${this.sessionProblems.length + 1}`;
+    const label = this.sessionMode === 'practice' ? `Practice: ${this.sessionVal}` : `${this.sessionMode} ${this.sessionVal}`;
+    this.renderer.renderGame(eng, this.currentProblem, shown, timer, counter, label);
+    document.querySelector('.replay-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'replay-overlay';
+    overlay.innerHTML = info;
+    document.getElementById('screen-game').appendChild(overlay);
+  }
+
+  _handleReplayKey(e) {
+    e.preventDefault();
+    if (e.key === 'Escape') {
+      if (this._replayAutoTimer) { clearInterval(this._replayAutoTimer); this._replayAutoTimer = null; }
+      document.querySelector('.replay-overlay')?.remove();
+      this.state = 'PLAYING';
+      this._nextProblem();
+      return;
+    }
+    if (e.key === 'Enter') {
+      if (this._replayStep < this._replayKeys.length) {
+        const k = this._replayKeys[this._replayStep];
+        this._replayEngine.processKey(k);
+        this._replayKeysShown.push(k);
+        this._replayStep++;
+        this._renderReplay();
+      }
+      return;
+    }
+    if (e.key === ' ') {
+      if (this._replayAutoTimer) return;
+      this._replayAutoTimer = setInterval(() => {
+        if (this._replayStep >= this._replayKeys.length) {
+          clearInterval(this._replayAutoTimer); this._replayAutoTimer = null; return;
+        }
+        const k = this._replayKeys[this._replayStep];
+        this._replayEngine.processKey(k);
+        this._replayKeysShown.push(k);
+        this._replayStep++;
+        this._renderReplay();
+      }, 300);
+      return;
+    }
+  }
+
   _dismissFeedback() {
     if (this._feedbackTimer) { clearTimeout(this._feedbackTimer); this._feedbackTimer = null; }
     this.renderer.hideInlineFeedback();
@@ -2507,11 +2673,17 @@ class App {
   }
 
   _renderGame() {
-    if (this.state !== 'PLAYING') return;
-    const timer = this.sessionMode === 'timed' ? `${this.timeRemaining}s` : '';
-    const counter = this.sessionMode === 'count' ? `${this.sessionProblems.length + 1}/${this.sessionProblems.length + this.problemsRemaining}` : `#${this.sessionProblems.length + 1}`;
-    const label = this.sessionMode === 'practice' ? `Practice: ${this.sessionVal}` : `${this.sessionMode} ${this.sessionVal}${this.sessionMode === 'timed' ? 's' : ''}`;
-    this.renderer.renderGame(this.engine, this.currentProblem, this.userKeystrokes, timer, counter, label);
+    if (this._rafPending) return;
+    this._rafPending = true;
+    requestAnimationFrame(() => {
+      this._rafPending = false;
+      if (this.state !== 'PLAYING' && this.state !== 'REPLAY') return;
+      const timer = this.sessionMode === 'timed' ? `${this.timeRemaining}s` : '';
+      const counter = this.sessionMode === 'count' ? `${this.sessionProblems.length + 1}/${this.sessionProblems.length + this.problemsRemaining}` : `#${this.sessionProblems.length + 1}`;
+      const label = this.sessionMode === 'practice' ? `Practice: ${this.sessionVal}` : `${this.sessionMode} ${this.sessionVal}${this.sessionMode === 'timed' ? 's' : ''}`;
+      const eng = this.state === 'REPLAY' ? this._replayEngine : this.engine;
+      this.renderer.renderGame(eng, this.currentProblem, this.state === 'REPLAY' ? this._replayKeysShown : this.userKeystrokes, timer, counter, label);
+    });
   }
 }
 
